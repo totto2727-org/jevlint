@@ -1,7 +1,8 @@
 # Upstream differences
 
 Comparison baseline: [mizchi/jev-lint af58a3bd20693f828ff6353e3543c0ab5bb7bad4](https://github.com/mizchi/jev-lint/tree/af58a3bd20693f828ff6353e3543c0ab5bb7bad4).
-The intended fork repository is `totto2727/jevlint`; package and CLI names remain `jev-lint`, and publication is not part of this change.
+The fork repository is `totto2727-org/jevlint`, the package name is `@totto2727/jevlint`, and the CLI name remains `jev-lint`.
+Publication is not part of this change.
 This is a source fork, not only deployment configuration: runtime rule defaults, inference transport and cache scoping differ from upstream.
 
 ## Custom-only rule distribution

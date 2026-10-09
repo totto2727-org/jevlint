@@ -1,5 +1,5 @@
 {
-  "name": "jev-lint",
+  "name": "@totto2727/jevlint",
   "version": "0.7.1",
   "description": "A natural-language linter: ast-grep picks the code, a sentence you write is the rule, and Jev returns the verdict",
   "keywords": [
@@ -15,12 +15,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/totto2727/jevlint.git"
+    "url": "git+https://github.com/totto2727-org/jevlint.git"
   },
   "bugs": {
-    "url": "https://github.com/totto2727/jevlint/issues"
+    "url": "https://github.com/totto2727-org/jevlint/issues"
   },
-  "homepage": "https://github.com/totto2727/jevlint#readme",
+  "homepage": "https://github.com/totto2727-org/jevlint#readme",
   "type": "module",
   "engines": {
     "node": ">=24"

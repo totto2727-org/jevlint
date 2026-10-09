@@ -1,7 +1,7 @@
 # jev-lint: カスタムルール専用
 
 この [mizchi/jev-lint](https://github.com/mizchi/jev-lint) のフォークは、自然言語 lint の汎用エンジンとルール作成機能を維持しますが、本番用ルールを同梱しません。
-リポジトリは `totto2727/jevlint` を想定し、パッケージ名と CLI 名は `jev-lint` のままです。
+リポジトリは `totto2727-org/jevlint`、パッケージ名は `@totto2727/jevlint`、CLI 名は `jev-lint` です。
 比較対象の upstream リビジョンと運用上の変更は [フォーク差分](docs/upstream-differences.md) を参照してください。
 Node.js 24 以降が必要です。
 

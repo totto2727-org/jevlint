@@ -1,7 +1,7 @@
 # jev-lint: custom rules only
 
 This fork of [mizchi/jev-lint](https://github.com/mizchi/jev-lint) keeps the generic natural-language lint engine and rule-authoring tools, but bundles no production rules.
-The repository is intended for `totto2727/jevlint`, while the package and CLI names remain `jev-lint`.
+The repository is `totto2727-org/jevlint`, the package name is `@totto2727/jevlint`, and the CLI name remains `jev-lint`.
 See [fork differences](docs/upstream-differences.md) for the pinned upstream revision and operational changes.
 Node.js 24 or later is required.
 
