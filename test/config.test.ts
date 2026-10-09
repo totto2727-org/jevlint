@@ -30,6 +30,7 @@ test("config: a valid file parses into every setting it names", () => {
         "  comment-describes-block: { at: 0.7, severity: error }",
         "  my-rule: warning",
         "cache: none",
+        "transport: cloudflare",
         "model: jev-1.13.0",
         "baseUrl: https://proxy.example/v1",
         "apiKeyEnv: MY_KEY",
@@ -61,6 +62,12 @@ test("config: a valid file parses into every setting it names", () => {
     const withFlag = configurable({ exclude: ["other"] });
     applyConfig(withFlag, { exclude: config.exclude }, new Set(["--exclude"]));
     assert.deepEqual(withFlag.exclude, ["other"], "the flag wins over the file");
+    assert.equal(config.transport, "cloudflare");
+    const gateway = configurable();
+    applyConfig(gateway, { transport: "cloudflare" }, new Set());
+    assert.equal(gateway.transport, "cloudflare");
+    applyConfig(gateway, { transport: "typesafe" }, new Set(["--transport"]));
+    assert.equal(gateway.transport, "cloudflare", "explicit CLI transport wins");
     assert.equal(config.baseUrl, "https://proxy.example/v1");
     assert.equal(config.group, "rule");
     assert.equal(config.arm, "bare");
@@ -90,6 +97,7 @@ test("config: an unknown key, a bad value and bad YAML are all reported", () => 
   const dir = mkdtempSync(join(tmpdir(), "jev-lint-cfg-"));
   try {
     assert.match(loadConfig(writeConfig(dir, "concurency: 4\n")).errors[0]!, /not a known setting/);
+    assert.match(loadConfig(writeConfig(dir, "transport: unknown\n")).errors[0]!, /must be typesafe or cloudflare/);
     assert.match(loadConfig(writeConfig(dir, "group: sideways\n")).errors[0]!, /must be one of/);
     assert.match(loadConfig(writeConfig(dir, "retry: 0\n")).errors[0]!, /positive integer/);
     assert.match(loadConfig(writeConfig(dir, "arm: wide\n")).errors[0]!, /must be null or one of/);
@@ -608,12 +616,8 @@ await testAsync("config: init writes a language-qualified key for every shipped 
     assert.deepEqual(errors, []);
     const names = Object.keys(config.rules ?? {}).sort();
     const shipped = shippedRulesPath();
-    assert.ok(shipped);
-    const expected = loadRules([shipped!]).rules.map((rule) => `${rule.languageDir}/${rule.id}`).sort();
-    assert.deepEqual(names, expected, "init must list every shipped rule separately");
-    assert.ok(names.every((name) => name.includes("/")), "a bare id would enable several languages at once");
-    assert.ok(names.includes("moonbit/fn-name-promises"));
-    assert.ok(names.includes("typescript/fn-name-promises"));
+    assert.equal(shipped, null);
+    assert.deepEqual(names, [], "init must not enable test fixtures or deleted rules");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

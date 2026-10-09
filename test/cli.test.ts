@@ -11,8 +11,18 @@ import { resolveTargets } from "../src/cli/targets.ts";
 import { test, testAsync } from "./harness.ts";
 import { noulRule } from "./builders.ts";
 
+test("cli: custom-only default route is Cloudflare and missing credentials never falls back", () => {
+  const root = realpathSync(".");
+  const env: NodeJS.ProcessEnv = { ...process.env, JEV_LINT_TRANSPORT: "", CLOUDFLARE_ACCOUNT_ID: "", CLOUDFLARE_AI_GATEWAY_ID: "", CLOUDFLARE_AI_GATEWAY_API_KEY: "", TYPESAFE_API_KEY: "not-a-credential" };
+  delete env.JEV_LINT_TRANSPORT;
+  const result = spawnSync("node", ["--experimental-strip-types", join(root, "src/cli.ts"), "check", "--no-config", "-R", join(root, "test/fixtures/rules/typescript/fn-name-promises"), join(root, "test/fixtures/rules/typescript/fn-name-promises/fixtures"), "--cache", "none", "--json"], { env, encoding: "utf8" });
+  assert.equal(result.status, 3, result.stderr);
+  assert.match(result.stdout + result.stderr, /Cloudflare requires/);
+  assert.ok(JSON.parse(result.stdout).stats.missing > 0);
+});
+
 test("cli: a bare config rule warns while a qualified rule selects quietly", () => {
-  const shipped = join(realpathSync("."), "rules");
+  const shipped = join(realpathSync("."), "test/fixtures/rules");
   const select = (name: string) => {
     const said: string[] = [];
     const opts = parseArgs(["-R", shipped], { color: false });
@@ -37,7 +47,7 @@ test("cli: --threshold replaces --at, while --at remains a warned alias", () => 
   assert.deepEqual(alias.at, preferred.at);
   assert.equal(alias.deprecatedAt, true);
   const cli = join(realpathSync("."), "src/cli.ts");
-  const rule = join(realpathSync("."), "rules", "typescript", "fn-name-promises", "rule.yml");
+  const rule = join(realpathSync("."), "test/fixtures/rules", "typescript", "fn-name-promises", "rule.yml");
   const run = (flag: string) => spawnSync("node", ["--experimental-strip-types", cli, "rules", "--no-config", "-R", rule, flag, "typescript/fn-name-promises=0.8", "--json"], { encoding: "utf8" });
   const current = run("--threshold");
   assert.equal(current.status, 0, current.stderr);
@@ -69,7 +79,7 @@ await testAsync("cli: `commits --base <ref>` with `paths:` in the config judges 
     const base = git(["rev-parse", "HEAD~1"]).trim();
     writeFileSync(join(dir, ".jev-lint.yaml"), "files: [src]\nrules: { commit-message-describes-diff: on }\n");
     const cli = join(realpathSync("."), "src/cli.ts");
-    const shipped = join(realpathSync("."), "rules");
+    const shipped = join(realpathSync("."), "test/fixtures/rules");
     const out = execFileSync("node", ["--experimental-strip-types", cli, "commits", "--base", base, "--dry-run", "--cache", "none", "-R", shipped, "--no-color"], {
       cwd: dir,
       stdio: "pipe",
@@ -128,9 +138,9 @@ test("cli: the config folds into the options under the flags, and two spellings 
 test("cli: `run <id>` selects one shipped rule and scans the config's paths; a commit rule makes it `commits`", () => {
   const said: string[] = [];
   const log = (s: string) => void said.push(s);
-  const shipped = join(realpathSync("."), "rules");
+  const shipped = join(realpathSync("."), "test/fixtures/rules");
   const opts = parseArgs(["fn-name-promises", "--quiet", "-R", shipped], { color: false });
-  opts.rulesAreShipped = true;
+  opts.rulesAreShipped = false;
   const picked = selectForRun("run", opts, { files: ["src"] }, ["fn-name-promises"], log);
   assert.ok(picked);
   assert.equal(picked!.command, "check");
@@ -139,7 +149,7 @@ test("cli: `run <id>` selects one shipped rule and scans the config's paths; a c
   assert.deepEqual(opts.paths, ["src"], "the id took the positional, so the config's paths apply");
   assert.equal(picked!.rangeArg, undefined);
   const commits = parseArgs(["commit-message-describes-diff", "main..HEAD", "--quiet", "-R", shipped], { color: false });
-  commits.rulesAreShipped = true;
+  commits.rulesAreShipped = false;
   const asCommits = selectForRun("run", commits, { files: ["src"] }, ["commit-message-describes-diff", "main..HEAD"], log);
   assert.equal(asCommits!.command, "commits");
   assert.equal(asCommits!.rangeArg, "main..HEAD", "the positional after the id is the range");
@@ -180,7 +190,7 @@ await testAsync("cli: the targets of `commits` come from the positional, --base,
   // By subject, not by "whatever is in rules/git": that directory held one
   // rule until `diff-follows-instructions` joined it, and a test that
   // encodes the count breaks on the next one too.
-  const commitRules = loadRules([join(realpathSync("."), "rules", "git")]).rules.filter((r) => r.subject === "commit");
+  const commitRules = loadRules([join(realpathSync("."), "test/fixtures/rules", "git")]).rules.filter((r) => r.subject === "commit");
   assert.equal(commitRules.length, 1, "one shipped rule judges a commit message");
   const withBase = parseArgs(["--base", "main"], { color: false });
   withBase.paths = ["src"]; // as the config would fill it
@@ -205,7 +215,7 @@ await testAsync("cli: `commits --staged` names no range and needs a change rule,
   const out = (s: string) => void said.push(s);
   // Commit rules only: this test is about `--staged` refusing a rule set
   // that has no change rule in it, and rules/git now ships one.
-  const commitRules = loadRules([join(realpathSync("."), "rules", "git")]).rules.filter((r) => r.subject === "commit");
+  const commitRules = loadRules([join(realpathSync("."), "test/fixtures/rules", "git")]).rules.filter((r) => r.subject === "commit");
   const dir = mkdtempSync(join(tmpdir(), "jev-staged-targets-"));
   try {
     const file = join(dir, "change.yml");
@@ -297,7 +307,7 @@ await testAsync("cli: main answers help, a bad flag and a bad --message-file wit
     assert.match(captured.err, /usage:/);
     assert.equal(await main(["commits", "--squash", "--message-file", "/nonexistent/message"]), 2);
     assert.match(captured.err, /--message-file \/nonexistent\/message/);
-    assert.equal(await main(["frobnicate", "--no-config", "-R", join(realpathSync("."), "rules", "git")]), 2);
+    assert.equal(await main(["frobnicate", "--no-config", "-R", join(realpathSync("."), "test/fixtures/rules", "git")]), 2);
     assert.match(captured.err, /unknown command `frobnicate`/);
   } finally {
     process.stdout.write = writeStdout;
@@ -342,7 +352,7 @@ await testAsync("cli: init writes the starter config once, and replay refuses wh
 
     // `rules` lists what loaded and exits 0, or names what did not and exits 2.
     const before = said.length;
-    assert.equal(cmdRules(parseArgs(["-R", join(realpathSync("."), "rules", "git")], { color: false }), out, log), 0);
+    assert.equal(cmdRules(parseArgs(["-R", join(realpathSync("."), "test/fixtures/rules", "git")], { color: false }), out, log), 0);
     assert.ok(said.slice(before).some((s) => s.startsWith("git/commit-message-describes-diff")));
     const brokenPath = join(dir, "rules.yml");
     writeFileSync(brokenPath, "id: x\nlanguage: TypeScript\n");

@@ -10,7 +10,7 @@ not a sentiment. Vague entries are worse than absent ones.
 - A rule lives at `rules/<lang>/<id>/rule.yml`, with `fixtures/` beside it,
   an `expect.yml` labelling them, and the accepted `baseline.json`. A rule
   file anywhere else has no fixtures and no tier, and that is a different
-  thing.
+  thing. Test-only regression suites may live under `test/fixtures/rules/` and are never production defaults.
 - A rule ships with a cutoff that was fitted, and the `threshold:` carries a
   comment naming the run it came from, what the defects answered, where the
   cleans topped out, and the pass-to-pass spread. A guessed cutoff is
@@ -39,7 +39,7 @@ not a sentiment. Vague entries are worse than absent ones.
   decision, the measurement, the reason the obvious version is wrong.
   Nothing restates the code.
 - A comment that stopped being true is a defect, not untidiness. This
-  package ships a rule that finds them; it must not carry them. A change
+  package supports custom rules that find them; it must not carry them. A change
   that makes a nearby comment false fixes that comment in the same commit.
 - A number in a comment is one a reader can re-derive. Say what was
   measured and against what, not just the result.

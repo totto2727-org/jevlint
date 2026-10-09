@@ -6,6 +6,7 @@
  * resolve the targets, run -- and the rest take the options as parsed.
  */
 import { readFileSync } from "node:fs";
+import { Jev, fromEnv } from "../jev.ts";
 import { precommitRules } from "../config.ts";
 import { parseArgs, USAGE, type Deps, type Log } from "./args.ts";
 import { cmdCalibrate, cmdGaps } from "./cmd-calibrate.ts";
@@ -46,7 +47,7 @@ export async function main(argv: string[], deps: Deps = {}): Promise<number> {
 
   const log: Log = deps.log ?? ((s) => process.stderr.write(`${s}\n`));
   const out: Log = deps.out ?? ((s) => process.stdout.write(`${s}\n`));
-  const client = deps.client ?? null;
+  let client = deps.client ?? null;
   if (opts.deprecatedAt) log("warning: --at is deprecated; use --threshold");
 
   if (command === "init") return cmdInit(opts, out, log);
@@ -54,6 +55,7 @@ export async function main(argv: string[], deps: Deps = {}): Promise<number> {
   const context = resolveContext(opts, rest, log);
   if (!context) return 2;
   const { config, configPath, baseDir, argPaths, cachePath } = context;
+  client ??= new Jev({ transport: opts.transport ?? (process.env.JEV_LINT_TRANSPORT as "typesafe" | "cloudflare" | undefined) ?? "cloudflare", model: opts.model, baseUrl: opts.baseUrl, apiKey: config.apiKeyEnv ? fromEnv([config.apiKeyEnv]) : undefined });
 
   if (command === "rules") return cmdRules(opts, out, log, baseDir);
   if (command === "replay") return cmdReplay(opts, out, log);

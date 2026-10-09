@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
+import { loadConfig } from "../src/config.ts";
 import { main } from "../src/cli/main.ts";
 import { loadRules, ruleTextHash } from "../src/rules.ts";
 import { fakeClient } from "./builders.ts";
@@ -328,7 +329,7 @@ await testAsync("commands: review judges only what the diff touched, and commits
       assert.equal(noChangeJson.code, 0);
       assert.deepEqual(JSON.parse(noChangeJson.out).findings, [], "one document, empty, where JSON was asked for");
       // The commit rule, answered low: the range is judged and noChange reported.
-      const commitRules = join(realpathSync(here), "rules", "git");
+      const commitRules = join(realpathSync(here), "test/fixtures/rules", "git");
       const commits = await cli(["commits", "HEAD~1..HEAD", "--no-config", "--cache", "none", "-R", commitRules, "--no-color"], fakeClient(() => 0.2));
       assert.equal(commits.code, 0, commits.out + commits.log);
       assert.match(commits.out, /1 commit\(s\) in HEAD~1\.\.HEAD/);
@@ -365,7 +366,7 @@ await testAsync("commands: commits --dry-run names the rule and the documents a 
       // Both a commit rule and a change rule, the shipped pair under
       // rules/git, loaded together -- the exact configuration a plan has
       // to stay readable under, since it puts two subjects on one ref.
-      const commitRules = join(realpathSync(here), "rules", "git");
+      const commitRules = join(realpathSync(here), "test/fixtures/rules", "git");
       const dry = await cli(
         ["commits", "HEAD~1..HEAD", "--no-config", "--cache", "none", "-R", commitRules, "--no-color", "--dry-run"],
         fakeClient(() => 0.2),
@@ -404,7 +405,7 @@ await testAsync("commands: commits --dry-run claims no change subject for a comm
     git(["commit", "-q", "-m", "Add liar, no docs"]);
     process.chdir(dir);
     try {
-      const commitRules = join(realpathSync(here), "rules", "git");
+      const commitRules = join(realpathSync(here), "test/fixtures/rules", "git");
       const dry = await cli(
         ["commits", "HEAD~1..HEAD", "--no-config", "--cache", "none", "-R", commitRules, "--no-color", "--dry-run"],
         fakeClient(() => 0.2),
@@ -515,6 +516,9 @@ await testAsync("commands: --json gives every command one JSON document on stdou
 
     const init = parseOne((await cli(["init", "--config", join(dir, "new.yaml"), "--json"])).out);
     assert.equal(init.wrote, join(dir, "new.yaml"));
+    const guidance = await cli(["init", "--config", join(dir, "new.yaml"), "--force"]);
+    assert.match(guidance.out, /CLOUDFLARE_AI_GATEWAY_API_KEY/);
+    assert.match(guidance.out, /CLOUDFLARE_ACCOUNT_ID/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -566,9 +570,9 @@ await testAsync("commands: since 0.5 a config picks its rules by id, .jev-lint/r
     process.chdir(dir);
     // No config: everything loaded runs, and the run says so.
     const all = await cli(["check", "src", "--cache", "none", "--json"]);
-    assert.equal(all.code, 1, all.log);
-    assert.match(all.log, /no config: running all \d+ packaged rule/);
-    assert.ok(Object.keys(JSON.parse(all.out).stats.byRule).length >= 1);
+    assert.equal(all.code, 0, all.log);
+    assert.match(all.log, /no config: running all \d+ custom rule/);
+    assert.deepEqual(JSON.parse(all.out).findings, []);
     assert.ok(all.client.asked.some((q) => String(JSON.stringify(q)).includes("body is too short")), "the project's own rule ran");
     // A config that names no rules runs noChange, and says what to write.
     writeFileSync(join(dir, ".jev-lint.yaml"), "files: [src]\n");
@@ -576,10 +580,10 @@ await testAsync("commands: since 0.5 a config picks its rules by id, .jev-lint/r
     assert.equal(none.code, 2);
     assert.match(none.log, /names no `rules:`/);
     // A config that names rules runs those, with what it overrides.
-    writeFileSync(join(dir, ".jev-lint.yaml"), "files: [src]\nrules:\n  body-short: { severity: error, at: 0.5 }\n  fn-name-promises: off\n");
+    writeFileSync(join(dir, ".jev-lint.yaml"), "files: [src]\nrules:\n  body-short: { severity: error, at: 0.5 }\n");
     const some = await cli(["check", "--cache", "none", "--json"]);
     assert.equal(some.code, 1, some.log);
-    assert.match(some.log, /config warning: rules: `fn-name-promises` omits a language namespace/);
+    assert.ok(!some.log.includes("fn-name-promises"));
     const report = JSON.parse(some.out);
     assert.deepEqual(Object.keys(report.stats.byRule), ["body-short"]);
     assert.equal(report.findings[0].severity, "error");
@@ -609,14 +613,13 @@ await testAsync("commands: since 0.5 a config picks its rules by id, .jev-lint/r
     // `-R` is the whole set for that run, and a config rule it does not hold is an error.
     const only = await cli(["check", "src", "--cache", "none", "-R", rules, "--json"]);
     assert.equal(only.code, 1, only.log);
-    // `init` lists every shipped rule and writes to .jev-lint.yaml's spelling.
+    // `init` selects no production rules and writes to .jev-lint.yaml's spelling.
     const started = await cli(["init", "--force", "--json"]);
     assert.equal(started.code, 0);
     const written = readFileSync(join(dir, ".jev-lint.yaml"), "utf8");
     assert.match(written, /^files: \[src\]$/m);
-    assert.match(written, /^  typescript\/fn-name-promises: on$/m);
-    assert.match(written, /^  moonbit\/fn-name-promises: on$/m);
-    assert.match(written, /^  markdown\/document-is-slop: on$/m);
+    assert.match(written, /^rules: \{\}$/m);
+    assert.equal(loadConfig(join(dir, ".jev-lint.yaml")).errors.length, 0);
   } finally {
     process.chdir(here);
     rmSync(dir, { recursive: true, force: true });
@@ -806,6 +809,9 @@ await testAsync("commands: a project rule that extends a shipped one runs with t
   const { dir } = project();
   const here = process.cwd();
   try {
+    const baseDir = join(dir, ".jev-lint", "rules", "typescript", "fn-name-promises");
+    mkdirSync(baseDir, { recursive: true });
+    writeFileSync(join(baseDir, "rule.yml"), readFileSync(join(here, "test/fixtures/rules/typescript/fn-name-promises/rule.yml")));
     const ruleDir = join(dir, ".jev-lint", "rules", "typescript", "acme-fn-name");
     mkdirSync(ruleDir, { recursive: true });
     mkdirSync(join(dir, "docs"));
@@ -820,7 +826,7 @@ await testAsync("commands: a project rule that extends a shipped one runs with t
     const run = await cli(["check", "--cache", "none", "--json"]);
     assert.deepEqual(Object.keys(JSON.parse(run.out).stats.byRule), ["acme-fn-name"], run.log);
     assert.ok(run.client.asked.length >= 2, "the shipped matcher found both functions");
-    const shipped = loadRules([join(here, "rules", "typescript", "fn-name-promises")]).rules[0]!;
+    const shipped = loadRules([join(here, "test/fixtures/rules", "typescript", "fn-name-promises")]).rules[0]!;
     assert.ok(run.client.asked.every((q) => String(JSON.stringify(q)).includes(shipped.ask.slice(0, 40))), "the base's question was asked");
     assert.ok(run.client.asked.every((q) => String(JSON.stringify(q)).includes("Read the naming document.")), "with the appended note");
     assert.ok(run.client.states.length > 0 && run.client.states.every((s) => JSON.stringify(s.context_documents).includes("conventional name")));

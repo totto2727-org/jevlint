@@ -14,6 +14,7 @@
  * The benefit is that the expensive step happens once per file for every rule
  * at once, instead of once per rule per file.
  */
+import { createHash } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import { Jev, JevError, mapLimit, DEFAULT_CONCURRENCY, type AskClient } from "./jev.ts";
 import { runAstGrep, buildSymbols, astGrepRuleId, ruleLanguages } from "./scan.ts";
@@ -378,7 +379,7 @@ export async function run({
   // cache. Bypassed rather than merely ignored on read: writing one pass's
   // answer while deciding on the mean of several would leave the cache holding
   // a verdict the report never used.
-  const persistTo = passes === 1 ? cachePath : null;
+  const persistTo = passes === 1 && (!client || client.cacheIdentity) ? cachePath : null;
 
   const collected = commits
     ? collectCommits(rules, commits.range, cwd, commits.label, commits.squash, commits.staged)
@@ -386,6 +387,17 @@ export async function run({
   const { subjects, symbols, sources, tests, stderr, skippedByDiff, excluded, undeclared, duplicateGrammars, ignored, unpaired } = collected;
   const commitStats = commits && "commits" in collected ? (collected as { commits: RunResult["commits"] }).commits : undefined;
 
+  const jev: AskClient = client ?? new Jev({ transport: (process.env.JEV_LINT_TRANSPORT as "typesafe" | "cloudflare" | undefined) ?? "cloudflare", apiKey, model });
+  // Conservative invalidation covers every collected state input, including
+  // context documents and paired tests. It trades cache locality for correctness.
+  const stateScope = createHash("sha256").update(JSON.stringify({
+    route: jev.cacheIdentity ?? jev.model,
+    model: jev.model,
+    sources: [...sources], symbols,
+    tests: tests ? [...tests] : null,
+    subjects: subjects.map((s) => ({ ...s, rule: { ...s.rule, at: null, severity: null, loose: null } })),
+    group, batchSize, ruleBatchCap,
+  }, (_key, value) => value instanceof Map ? [...value] : value)).digest("hex");
   const cache = persistTo ? Cache.load(persistTo) : new Cache(null);
   // Under `auto` the axis is decided per rule, and the axis is part of what
   // the model saw -- so the cache key needs the axis this subject actually
@@ -414,7 +426,7 @@ export async function run({
       s.commit ? `${s.text}\u0000${s.commit.diff}` : s.text,
       effectiveAxis(s),
       s.promoted ? (s.matchText ?? null) : null,
-      contextKey(s, s.arm, evidence(s)),
+      `${stateScope}\u0000${contextKey(s, s.arm, evidence(s)) ?? ""}`,
       s.captured,
     ),
   }));
@@ -474,7 +486,6 @@ export async function run({
     };
   }
 
-  const jev: AskClient = client ?? new Jev({ apiKey, model });
   const errors: RunError[] = [];
   // Set by the first error that no retry, split or later batch can fix. Once
   // it is, the remaining batches and passes are not sent: they would fail
@@ -528,7 +539,7 @@ export async function run({
           const storeKey =
             batch.arm === s.arm
               ? s.key!
-              : verdictKey(s.rule, batch.arm, s.text, effectiveAxis(s), s.promoted ? (s.matchText ?? null) : null, contextKey(s, batch.arm, evidence(s)), s.captured);
+              : verdictKey(s.rule, batch.arm, s.text, effectiveAxis(s), s.promoted ? (s.matchText ?? null) : null, `${stateScope}\u0000${contextKey(s, batch.arm, evidence(s)) ?? ""}`, s.captured);
           cache.set(storeKey, answer, {
             rule: s.rule.id,
             draft: ruleTextHash(s.rule),

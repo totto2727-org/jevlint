@@ -22,7 +22,7 @@ export function loadOrDie(opts: Options, log: Log, baseDir: string = process.cwd
   for (const e of errors) log(`rule error: ${e}`);
   for (const w of warnings) log(`rule warning: ${w}`);
   if (loaded.length === 0) {
-    log(`no usable rules found in ${sources.join(", ")}`);
+    log(`no usable custom rules found${sources.length ? ` in ${sources.join(", ")}` : ""}; author rules in .jev-lint/rules/ or pass -R <directory>`);
     return null;
   }
   let rules = loaded;
@@ -43,7 +43,7 @@ export function loadOrDie(opts: Options, log: Log, baseDir: string = process.cwd
     // Judging someone's code against packaged rules is reasonable; doing it
     // without saying so is not, because their cutoffs were fitted to a
     // corpus this code has never seen.
-    log(`no config: running all ${rules.length} packaged rule(s); their cutoffs were fitted to this package's own corpus -- \`jev-lint init\` writes a config that picks`);
+    log(`no config: running all ${rules.length} custom rule(s) from .jev-lint/rules/; select rule ids in .jev-lint.yaml to narrow the set`);
   }
   return { rules, errors };
 }
@@ -72,7 +72,7 @@ export function selectForRun(command: string, opts: Options, config: Config, arg
   if (command === "run") {
     const [head, ...tail] = opts.paths;
     const shipped = shippedRulesPath();
-    // `run <id>` looks in the shipped packs and `.jev-lint/rules/`, or in
+    // `run <id>` looks in `.jev-lint/rules/`, or in
     // the `-R` directories when given; the config's `rules:` does not
     // narrow it -- the id on the command line is the selection.
     const project = opts.rulesAreShipped ? ruleSources(baseDir).filter((s) => s !== shipped) : opts.rules;

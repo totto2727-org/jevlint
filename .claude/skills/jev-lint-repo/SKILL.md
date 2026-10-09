@@ -5,6 +5,14 @@ description: "Use when changing jev-lint ITSELF — editing src/, shipped rule s
 
 # Maintaining jev-lint
 
+## Custom-only fork boundary
+
+This fork removes upstream production rule suites. No rule YAML is bundled under `rules/` and `.jev-lint.yaml` enables no rules.
+The upstream authoring workflow below applies only to explicitly supplied custom suites, not to a shipped rule catalog.
+The minimal generic regression suites live under `test/fixtures/rules/`; `npm run ci` replays that directory explicitly.
+Documentation jobs must pass both `--config <job-config>` and `-R <job-rule-directory>` with `transport: cloudflare` and `model: typesafe/jev`, not rely on repository discovery.
+See [upstream differences](../../../docs/upstream-differences.md) for the pinned upstream revision and operational defaults.
+
 The user-facing skill (`skills/jev-lint/`, symlinked into `.claude/skills/`)
 is the contract; this file is what is different when the repository is
 jev-lint's own. Read `docs/internal.md` before editing `src/`.
@@ -20,8 +28,8 @@ node --experimental-strip-types src/cli.ts check --dry-run    # self-lint plan, 
 node --experimental-strip-types src/cli.ts review --base main --retry 3
 ```
 
-`.jev-lint.yaml` here points at source, tests, docs, and `package.json`,
-and excludes `test/fixtures/`, which holds planted defects for the cookbook.
+`.jev-lint.yaml` here points at source, tools and tests, excludes `test/fixtures/`, and selects no rules.
+The fixtures hold planted defects for generic engine regression tests.
 
 ## Rules and their evals
 

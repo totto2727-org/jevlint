@@ -9,7 +9,7 @@ test("compare-models: dry-run plans both Clef variants without credentials or wr
   const dir = mkdtempSync(join(tmpdir(), "jev-model-plan-"));
   try {
     const result = spawnSync(process.execPath, ["tools/compare-models.ts", "--dry-run", "--json",
-      "--rules", "rules/typescript/fn-name-promises", "--out", join(dir, "output")], {
+      "--rules", "test/fixtures/rules/typescript/fn-name-promises", "--out", join(dir, "output")], {
       encoding: "utf8", env: { ...process.env, CLOUDFLARE_API_TOKEN: "", CLOUDFLARE_AUTH_TOKEN: "", TYPESAFE_API_KEY: "", TYPESAFEAI_API_KEY: "" },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -23,7 +23,7 @@ test("compare-models: dry-run plans both Clef variants without credentials or wr
 
 test("compare-models: replay scores saved records and missing answers exit 3 without changing accepted files", () => {
   const dir = mkdtempSync(join(tmpdir(), "jev-model-replay-"));
-  const source = "rules/typescript/fn-name-promises/baseline.json";
+  const source = "test/fixtures/rules/typescript/fn-name-promises/baseline.json";
   const original = readFileSync(source, "utf8");
   try {
     for (const model of ["jev", "clef"]) {
@@ -32,7 +32,7 @@ test("compare-models: replay scores saved records and missing answers exit 3 wit
       writeFileSync(file, JSON.stringify({ ...JSON.parse(original), ...(model === "clef" ? { model: "clef" } : {}) }));
     }
     const args = ["tools/compare-models.ts", "--replay", "--json", "--models", "clef",
-      "--rules", "rules/typescript/fn-name-promises", "--out", dir];
+      "--rules", "test/fixtures/rules/typescript/fn-name-promises", "--out", dir];
     const replay = spawnSync(process.execPath, args, { encoding: "utf8" });
     assert.equal(replay.status, 0, replay.stderr);
     const report = JSON.parse(replay.stdout);
@@ -52,7 +52,7 @@ test("compare-models: replay scores saved records and missing answers exit 3 wit
 
 test("compare-models: live runs save each provider separately and never rewrite accepted baselines", () => {
   const dir = mkdtempSync(join(tmpdir(), "jev-model-live-"));
-  const baselinePath = "rules/typescript/fn-name-promises/baseline.json";
+  const baselinePath = "test/fixtures/rules/typescript/fn-name-promises/baseline.json";
   const before = readFileSync(baselinePath, "utf8");
   try {
     const preload = join(dir, "transport.mjs");
@@ -64,7 +64,7 @@ test("compare-models: live runs save each provider separately and never rewrite 
       return Response.json(String(url).includes("api.cloudflare.com") ? { success: true, result } : result);
     };`);
     const result = spawnSync(process.execPath, ["--import", preload, "tools/compare-models.ts", "--live-jev", "--json",
-      "--repeat", "2", "--rules", "rules/typescript/fn-name-promises", "--out", join(dir, "output")], {
+      "--repeat", "2", "--rules", "test/fixtures/rules/typescript/fn-name-promises", "--out", join(dir, "output")], {
       encoding: "utf8", env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: "test-account", CLOUDFLARE_API_TOKEN: "test-only",
         TYPESAFE_API_KEY: "test-only", JEV_LINT_MODEL: "jev-latest" },
     });
@@ -76,7 +76,7 @@ test("compare-models: live runs save each provider separately and never rewrite 
     assert.ok(existsSync(join(dir, "output/records/jev/typescript/fn-name-promises.json")));
     assert.ok(existsSync(join(dir, "output/records/clef/typescript/fn-name-promises.json")));
     assert.ok(existsSync(join(dir, "output/records/clef-flash/typescript/fn-name-promises.json")));
-    const replay = spawnSync(process.execPath, ["tools/compare-models.ts", "--replay", "--json", "--out", join(dir, "output")], { encoding: "utf8" });
+    const replay = spawnSync(process.execPath, ["tools/compare-models.ts", "--replay", "--json", "--rules", "test/fixtures/rules/typescript/fn-name-promises", "--out", join(dir, "output")], { encoding: "utf8" });
     assert.equal(replay.status, 0, replay.stderr);
     assert.equal(JSON.parse(replay.stdout).comparisons.length, 2, "replay uses the original suite selection");
     assert.equal(readFileSync(baselinePath, "utf8"), before);
@@ -91,7 +91,7 @@ test("compare-models: unknown options and missing replay records fail before inf
   const dir = mkdtempSync(join(tmpdir(), "jev-model-missing-"));
   try {
     const missing = spawnSync(process.execPath, ["tools/compare-models.ts", "--replay", "--rules",
-      "rules/typescript/fn-name-promises", "--out", dir], { encoding: "utf8" });
+      "test/fixtures/rules/typescript/fn-name-promises", "--out", dir], { encoding: "utf8" });
     assert.equal(missing.status, 2);
     assert.match(missing.stderr, /record/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -104,7 +104,7 @@ test("compare-models: a wholly refused live suite stops subsequent models and su
     const preload = join(dir, "transport.mjs");
     writeFileSync(preload, 'globalThis.fetch = async () => new Response("denied", { status: 401 });');
     const result = spawnSync(process.execPath, ["--import", preload, "tools/compare-models.ts", "--json", "--rules",
-      "rules/typescript/fn-name-promises,rules/typescript/safe-name-is-safe", "--out", join(dir, "output")], {
+      "test/fixtures/rules/typescript/fn-name-promises,rules/typescript/safe-name-is-safe", "--out", join(dir, "output")], {
       encoding: "utf8", env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: "test-account", CLOUDFLARE_API_TOKEN: "test-only" },
     });
     assert.equal(result.status, 3, result.stderr);

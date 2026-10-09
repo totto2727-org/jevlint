@@ -132,8 +132,7 @@ threshold: 0.7  # uncalibrated
 ```
 
 With no `split:`, the whole matching file is one block. Set `extensions:`
-so unrelated files do not become subjects. See the shipped
-`text/query-name-describes-sql` rule for a measured example.
+so unrelated files do not become subjects. The example above must be authored and fitted locally; no production Text rule is bundled.
 For a document with a fixed basename, add `filenames: [AGENTS.md]` so the
 rule does not scan every Markdown file. `split: "^#{1,6}\\s+"` makes each
 heading section a subject; `state: located` also supplies the whole file
@@ -158,8 +157,7 @@ AGENTS.md or CLAUDE.md in the staged tree, preferring AGENTS.md. A `subject: com
 commit message and has no staged subject. Commit fixtures use
 `fixtures/<case>/{message,before/,after/}`; `expect.yml` labels the resulting
 subject. Ask only about facts visible in the diff
-and its supplied instructions. The shipped `git/commit-message-describes-diff`
-and `git/diff-follows-instructions` rules show both forms.
+and its supplied instructions. No production Git rule is bundled; the test-only suites demonstrate generic fixture execution but are not application defaults.
 
 ## Validate and fit the rule
 

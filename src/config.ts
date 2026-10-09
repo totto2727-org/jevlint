@@ -72,6 +72,7 @@ export interface Config {
   hooks?: { precommit?: HookRuleSelection };
   cache?: string | null;
   model?: string;
+  transport?: "typesafe" | "cloudflare";
   baseUrl?: string;
   apiKeyEnv?: string;
   group?: GroupMode;
@@ -143,7 +144,7 @@ export function loadConfig(path: string | null): LoadedConfig {
   const src = raw as Record<string, unknown>;
 
   const KNOWN = new Set([
-    "files", "exclude", "rules", "hooks", "languages", "cache", "model", "baseUrl", "apiKeyEnv", "group", "arm",
+    "files", "exclude", "rules", "hooks", "languages", "cache", "model", "transport", "baseUrl", "apiKeyEnv", "group", "arm",
     "concurrency", "batchSize", "ruleBatchCap", "retry", "unsureBelow",
   ]);
   // The 0.4 spellings, refused by name: a key read as nothing would run
@@ -245,6 +246,10 @@ export function loadConfig(path: string | null): LoadedConfig {
   str("model");
   str("baseUrl");
   str("apiKeyEnv");
+  if (src.transport !== undefined) {
+    if (src.transport === "cloudflare" || src.transport === "typesafe") config.transport = src.transport;
+    else errors.push(`${where("transport")} must be typesafe or cloudflare`);
+  }
 
   if (src.cache !== undefined) {
     if (src.cache === null || src.cache === false || src.cache === "none") config.cache = null;
@@ -395,17 +400,10 @@ files: [src]
 
 # The rules that run: \`on\`, \`off\`, a severity (hint, info, warning, error),
 # or a mapping -- \`{ severity: error, threshold: 0.7 }\`. Write \`lang/id\` to
-# select one language's rule. A bare shipped id selects every language that
-# has it and warns. Every shipped rule is listed here, on; remove or turn off the
-# ones you do not want. Their cutoffs were fitted to this package's corpus,
-# not to your
-# code: https://github.com/mizchi/jev-lint#calibrating
-#
-# A rule of your own goes in .jev-lint/rules/ (a rule.yml, or the shipped
-# layout <language>/<id>/rule.yml with fixtures beside it) and is named here
-# like any other.
-rules:
-${ruleKeys.map((key) => `  ${key}: on`).join("\n")}
+# select one language's rule. This fork ships no production rules.
+# Author rules in .jev-lint/rules/ or pass -R <directory> for one run.
+# Fit each rule's cutoff against its own labeled fixtures before relying on it.
+${ruleKeys.length ? `rules:\n${ruleKeys.map((key) => `  ${key}: on`).join("\n")}` : "rules: {}"}
 
 # The rule selection for both \`review --staged\` and \`commits --staged\`.
 # Without this section they use \`rules:\` above. \`extends: true\` copies
@@ -416,7 +414,7 @@ ${ruleKeys.map((key) => `  ${key}: on`).join("\n")}
 #   precommit:
 #     extends: true
 #     rules:
-#       git/diff-follows-instructions: on
+#       git/my-change-rule: on  # define this custom rule first
 #       git/my-snapshot-change-rule: on  # define under .jev-lint/rules/git/
 
 # A grammar ast-grep does not have built in: a tree-sitter parser compiled to
@@ -437,9 +435,10 @@ ${ruleKeys.map((key) => `  ${key}: on`).join("\n")}
 # anything that can edit it can silence a rule or invent a finding.
 # cache: .jev-lint/baseline.json
 
-# The model, and the endpoint it is asked at. Point \`baseUrl\` at a proxy or a
-# self-hosted deployment to move the whole tool off the default service.
-# model: jev-latest
+# Cloudflare uses a fixed Workers AI endpoint. \`baseUrl\` is used only when
+# transport is explicitly typesafe, for a direct provider proxy or deployment.
+# transport: cloudflare  # default; typesafe explicitly opts into direct inference
+# model: typesafe/jev     # direct typesafe defaults to jev-latest
 # baseUrl: https://api.typesafe.ai
 
 # Which environment variable holds the API key. The key itself must NEVER go in
@@ -488,6 +487,7 @@ export interface Configurable {
   ruleSettings: Record<string, RuleSetting> | null;
   cache: string;
   model: string | null;
+  transport?: "typesafe" | "cloudflare" | null;
   baseUrl: string | null;
   group: GroupMode;
   arm: StateArm | null;
@@ -522,6 +522,7 @@ export function applyConfig(
     opts.cache = config.cache === null ? "none" : config.cache;
   }
   if (config.model && unset("--model")) opts.model = config.model;
+  if (config.transport && unset("--transport")) opts.transport = config.transport;
   if (config.baseUrl && unset("--base-url")) opts.baseUrl = config.baseUrl;
   if (config.group && unset("--group")) opts.group = config.group;
   if (config.arm !== undefined && unset("--arm")) opts.arm = config.arm;

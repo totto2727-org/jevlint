@@ -25,7 +25,6 @@
  */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import YAML from "yaml";
 import type { RuleSetting } from "./config.ts";
@@ -238,7 +237,7 @@ export function normalizeRule(raw: any, where = "rule", custom: CustomLanguages 
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   if (id === "") return { error: `${where}: missing \`id\`` };
   if (raw.extends !== undefined) {
-    return { error: `${id}: \`extends\` is resolved when rule files are loaded, against the rules loaded beside it and the shipped packs; a rule built in memory has neither` };
+    return { error: `${id}: \`extends\` is resolved when rule files are loaded, against explicitly loaded bases; a rule built in memory has none` };
   }
   if (id.startsWith(PROBE_PREFIX)) {
     return {
@@ -698,18 +697,7 @@ function criterionText(c: Criterion): string {
 /** Where a project's own rules live, under the directory the config is in. */
 export const USER_RULES_DIR = ".jev-lint/rules";
 
-/**
- * Where rules come from when `-R` was not given: the packs inside the
- * installed package, and the project's own under `.jev-lint/rules/` when
- * that directory exists. Both, since 0.5: a project's rule is selected by
- * id in the config like a shipped one, and a shipped one is turned off
- * there rather than shadowed. A rule of one's own with a shipped id is a
- * duplicate, and the loader says so.
- *
- * Without the package's own path, `npm install jev-lint && npx jev-lint
- * check src` could not work at all: the default was once the literal
- * `rules`, and every fresh install exited with "no usable rules found".
- */
+/** Only explicit project rules are discoverable in this custom-only fork. */
 export function ruleSources(base: string = process.cwd()): string[] {
   const shipped = shippedRulesPath();
   const own = join(base, USER_RULES_DIR);
@@ -758,9 +746,9 @@ export function applyRuleSettings(
 
 /** The packaged rules, wherever this copy of the tool is installed; null if not found. */
 export function shippedRulesPath(): string | null {
-  // dist/cli.js and src/cli.ts are both one directory below the package root.
-  const shipped = join(dirname(fileURLToPath(import.meta.url)), "..", "rules");
-  return existsSync(shipped) ? shipped : null;
+  // This fork deliberately has no production catalogue. Test fixtures must
+  // never become defaults merely because they are present in a checkout.
+  return null;
 }
 
 /**
@@ -814,7 +802,7 @@ export function selectRules({
   const hint = near.length > 0 ? ` -- did you mean ${near.slice(0, 6).join(", ")}?` : "";
   return {
     rules: [],
-    errors: [`no shipped rule or project rule is called \`${id}\`${hint}`],
+    errors: [`no explicitly loaded rule is called \`${id}\`${hint}`],
     warnings: [],
     from: "",
   };
@@ -1040,12 +1028,8 @@ const QUESTION_FIELDS = ["ask", "note", "criteria", "rule", "constraints", "util
 /**
  * The second pass: each `extends` laid over its base.
  *
- * The base is looked up among the rules this call loaded first -- a
- * project's rule may extend another of its own -- then in the shipped
- * packs, which are read for the lookup and never added to the result: a
- * project that extends `typescript/test-name-verifies-claim` has not asked
- * for the shipped rule to run. A chain resolves in dependency order; a
- * cycle is an error on every rule in it.
+ * Bases must be explicitly loaded alongside the derived rule. A chain
+ * resolves in dependency order; a cycle is an error on every rule in it.
  */
 function resolveExtends(
   pending: PendingExtends[],
@@ -1055,14 +1039,6 @@ function resolveExtends(
   warnings: string[],
   admit: (rule: Rule, where: string, path: string, layout: PendingExtends["layout"]) => boolean,
 ): void {
-  let shipped: Rule[] | null = null;
-  const shippedRules = (): Rule[] => {
-    if (shipped === null) {
-      const dir = shippedRulesPath();
-      shipped = dir ? loadRules([dir], custom).rules : [];
-    }
-    return shipped;
-  };
   const idOf = (p: PendingExtends) => (typeof p.raw.id === "string" ? p.raw.id.trim() : "");
   const done = new Map<PendingExtends, Rule | null>();
 
@@ -1081,7 +1057,7 @@ function resolveExtends(
     if (baseId === id) return fail(`extends \`${name}\` and must have its own id; the same id would be a second definition of the base`);
     if (stack.includes(id)) return fail(`extends in a cycle: ${[...stack, id].join(" -> ")}`);
 
-    // What the file's own languages ask for, so a bare id shipped in four
+    // What the file's own languages ask for, so a bare id defined in four
     // languages can resolve to the one whose grammars cover them.
     const rawLangs = p.raw.languages ?? p.raw.language;
     const wanted = rawLangs === undefined ? [] : (Array.isArray(rawLangs) ? rawLangs : [rawLangs]).map((l) => normalizeLanguage(l, custom)).filter((l): l is Language => l !== null);
@@ -1095,11 +1071,10 @@ function resolveExtends(
       candidates = pendingBase.map((q) => resolveOne(q, [...stack, id])).filter((r): r is Rule => r !== null);
       if (candidates.length === 0) return fail(`extends \`${name}\`, which did not load`);
     }
-    if (candidates.length === 0) candidates = shippedRules().filter(named);
-    if (candidates.length === 0) return fail(`extends \`${name}\`, but there is no loaded or shipped rule by that id`);
+    if (candidates.length === 0) return fail(`extends \`${name}\`, but there is no explicitly loaded rule by that id`);
     if (candidates.length > 1) candidates = candidates.filter(covers);
     if (candidates.length !== 1) {
-      const all = [...loaded, ...shippedRules()].filter(named).map((r) => `${r.languageDir ?? "(flat)"}/${r.id}`);
+      const all = loaded.filter(named).map((r) => `${r.languageDir ?? "(flat)"}/${r.id}`);
       return fail(
         `extends \`${name}\`, which names ${all.join(", ")}; write \`extends: <lang>/<id>\`, or give \`languages\` that only one of them covers`,
       );

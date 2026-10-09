@@ -16,7 +16,7 @@ import type { GroupMode, Severity, StateArm } from "../types.ts";
 
 /** Everything the command line can set. */
 export interface Options {
-  /** `-R` directories; empty means the shipped packs and `.jev-lint/rules/`. */
+  /** `-R` directories; empty means `.jev-lint/rules/` only. */
   rules: string[];
   /** True when `rules` was not given and the defaults are in use. */
   rulesAreShipped: boolean;
@@ -28,6 +28,7 @@ export interface Options {
   retry: number;
   /** An explicit config path, "none" to ignore any file, or null to search. */
   config: string | null;
+  transport: "typesafe" | "cloudflare" | null;
   baseUrl: string | null;
   cache: string;
   arm: StateArm | null;
@@ -90,7 +91,7 @@ export const USAGE = `jev-lint -- lint rules written as sentences, judged by a m
 
 usage:
   jev-lint check [paths...]        judge whole files
-  jev-lint run <rule> [paths...]   judge with one shipped rule: an id (every
+  jev-lint run <rule> [paths...]   judge with one custom rule: an id (every
                                    language that has it) or rust/<id> (one);
                                    --file <rules.yml> judges with that file's
                                    rules instead, or the one <rule> names in it.
@@ -114,7 +115,7 @@ usage:
   jev-lint init --pre-push        write a pre-push hook that judges the commits about to leave
 
 options:
-      --file <path>        run: a rule file to use instead of the shipped rules
+      --file <path>        run: an explicit custom rule file to use
       --squash             commits: the range as one diff, judged against --message
       --message <text>     commits --squash: the claim about the range
       --message-file <p>   commits --squash: the same, from a file, or - for stdin
@@ -179,7 +180,7 @@ options:
 batching:
   The axis moves verdicts, and most of that is the CUTOFF, not the axis. On
   this repository's corpus, 276 subjects, the two axes disagree on 1.4% of
-  decisions. Judged at the shipped cutoffs -- which were fitted on the file
+  decisions. Historically judged at upstream cutoffs -- which were fitted on the file
   axis -- the rule axis loses 1 true positive and gains 1 false positive.
   Refit on its own answers it recovers most of that, and what is left is 1
   fewer true positive and 2 more false positives out of 276: a real direction
@@ -208,7 +209,13 @@ batching:
   A rule can pin its axis with "axis: file" or "axis: rule", which the
   scheduler will not overrule. Pin any rule whose cutoff you calibrated.
 
+  --transport <typesafe|cloudflare>  Select inference route (default: cloudflare)
+
 environment:
+  JEV_LINT_TRANSPORT       inference route (cloudflare or typesafe)
+  CLOUDFLARE_ACCOUNT_ID    Workers AI account, for cloudflare transport
+  CLOUDFLARE_AI_GATEWAY_ID configured Gateway, for cloudflare transport
+  CLOUDFLARE_AI_GATEWAY_API_KEY Workers AI inference bearer token
   ${API_KEY_VARS[0]}         required for anything that asks
   ${API_KEY_VARS[1]}       accepted as a fallback
   ${BASE_URL_VARS[0]}        override the API endpoint
@@ -229,6 +236,7 @@ export function parseArgs(argv: string[], { color }: { color: boolean }): Option
     languages: {},
     retry: 1,
     config: null,
+    transport: null,
     baseUrl: null,
     cache: DEFAULT_CACHE_PATH,
     arm: null,
@@ -294,6 +302,13 @@ export function parseArgs(argv: string[], { color }: { color: boolean }): Option
       case "--no-config":
         opts.config = "none";
         break;
+      case "--transport": {
+        const route = need(i, a);
+        if (route !== "typesafe" && route !== "cloudflare") throw new Error("--transport must be typesafe or cloudflare");
+        opts.transport = route;
+        i += 1;
+        break;
+      }
       case "--base-url":
         opts.baseUrl = need(i, a);
         i += 1;
@@ -465,7 +480,7 @@ export function parseArgs(argv: string[], { color }: { color: boolean }): Option
     }
   }
   // With no -R, the sources are decided once the config's directory is
-  // known: the shipped packs and the project's `.jev-lint/rules/`.
+  // known: the project's `.jev-lint/rules/`.
   opts.rulesAreShipped = opts.rules.length === 0;
   if (opts.arm && !STATE_ARMS.includes(opts.arm)) {
     throw new Error(`--arm must be one of ${ARMS.join(", ")}`);
