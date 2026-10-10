@@ -16,6 +16,24 @@ const writeConfig = (dir: string, body: string): string => {
   return p;
 };
 
+test("config: rulePaths and shared context resolve beside the config, including explicit empty lists", () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "jev-config-paths-")));
+  try {
+    writeFileSync(join(dir, "evidence.md"), "Conventions.\n");
+    const file = writeConfig(dir, "rulePaths: [./fixed, ../other.yml]\ncontext: [evidence.md]\n");
+    const loaded = loadConfig(file);
+    assert.deepEqual(loaded.errors, []);
+    assert.deepEqual(loaded.config.rulePaths, [join(dir, "fixed"), join(dir, "../other.yml")]);
+    assert.deepEqual(loaded.config.context, [{ path: "evidence.md", text: "Conventions.\n" }]);
+    const empty = loadConfig(writeConfig(dir, "rulePaths: []\ncontext: []\n"));
+    assert.deepEqual(empty.errors, []);
+    assert.deepEqual(empty.config.rulePaths, []);
+    assert.deepEqual(empty.config.context, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("config: a valid file parses into every setting it names", () => {
   const dir = mkdtempSync(join(tmpdir(), "jev-lint-cfg-"));
   try {

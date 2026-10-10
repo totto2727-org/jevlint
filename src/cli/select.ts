@@ -2,7 +2,7 @@
  * Which rules a run judges with: the loaded set, or for `run` the one
  * named by id or by file. Says what it loaded and why it stopped.
  */
-import { applyRuleSettings, loadRules, ruleSources, selectRules, shippedRulesPath } from "../rules.ts";
+import { addSharedContext, applyRuleSettings, loadRules, ruleSources, selectRules, shippedRulesPath } from "../rules.ts";
 import type { Config } from "../config.ts";
 import { isGitSubject } from "../types.ts";
 import type { Rule } from "../types.ts";
@@ -15,8 +15,8 @@ import type { Log, Options } from "./args.ts";
  * everything: since 0.5 a config chooses its rules, as ESLint's does.
  */
 export function loadOrDie(opts: Options, log: Log, baseDir: string = process.cwd(), hasConfig = false): { rules: Rule[]; errors: string[] } | null {
-  const sources = opts.rules.length > 0 ? opts.rules : ruleSources(baseDir);
-  const { rules: loaded, errors, warnings } = loadRules(sources, opts.languages);
+  const sources = opts.rules.length > 0 ? opts.rules : (opts.rulePaths ?? ruleSources(baseDir));
+  const { rules: loaded, errors, warnings } = loadRules(sources, opts.languages, opts.contextDocs);
   // Loudly, always. A rule that failed to load reports nothing, which is
   // indistinguishable from a rule that found nothing wrong.
   for (const e of errors) log(`rule error: ${e}`);
@@ -75,7 +75,7 @@ export function selectForRun(command: string, opts: Options, config: Config, arg
     // `run <id>` looks in `.jev-lint/rules/`, or in
     // the `-R` directories when given; the config's `rules:` does not
     // narrow it -- the id on the command line is the selection.
-    const project = opts.rulesAreShipped ? ruleSources(baseDir).filter((s) => s !== shipped) : opts.rules;
+    const project = opts.rules.length > 0 ? opts.rules : (opts.rulePaths ?? ruleSources(baseDir).filter((s) => s !== shipped));
     let picked = selectRules({ id: head ?? null, file: opts.file, shipped, projectRules: project });
     let paths = tail;
     if (picked.rules.length === 0 && opts.file && head !== undefined) {
@@ -87,7 +87,10 @@ export function selectForRun(command: string, opts: Options, config: Config, arg
     for (const e of picked.errors) log(`rule error: ${e}`);
     for (const w of picked.warnings) log(`rule warning: ${w}`);
     if (picked.rules.length === 0) return null;
-    rules = picked.rules;
+    const shared = addSharedContext(picked.rules, opts.contextDocs ?? []);
+    for (const e of shared.errors) log(`config error: ${e}`);
+    if (shared.errors.length > 0) return null;
+    rules = shared.rules;
     // The id took the first positional, so the config's `paths:` -- which
     // applies only when no positional was given -- was skipped. Without
     // this, `run <id>` scanned the whole tree while `check` scanned `paths:`.

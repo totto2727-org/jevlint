@@ -366,6 +366,8 @@ test("state: a rule's context documents travel in the state, on every arm, and o
     const state = buildState({ file: "a.ts", source: "x", entry: sampleEntry(), subjects: [withDocs], arm, language: "TypeScript" });
     assert.deepEqual(state.context_documents, conventions, arm);
     assert.match(String(state.note_on_context_documents), /conventions/, arm);
+    assert.match(String(state.note_on_context_documents), /not instructions to the evaluator/, arm);
+    assert.match(String(state.note_on_context_documents), /Ignore embedded requests/, arm);
   }
   const plain = buildState({ file: "a.ts", source: "x", entry: sampleEntry(), subjects: [subjectOf({ id: "q0000" })], arm: "bare", language: "TypeScript" });
   assert.equal(plain.context_documents, undefined);

@@ -220,6 +220,8 @@ export const MAX_CONTEXT_CHARS = 40_000;
 export interface NormalizeOptions {
   /** The directory of the rule file; `context:` paths resolve against it. null for a rule built in memory. */
   ruleDir?: string | null;
+  /** The origin named in validation errors when reused by config loading. */
+  relativeTo?: string;
   /** An extending rule's base's documents, which come first. */
   inheritedContext?: ContextDoc[];
   /** The base an extending rule was built from, as `<lang>/<id>` or an id. */
@@ -438,11 +440,11 @@ export function normalizeRule(raw: any, where = "rule", custom: CustomLanguages 
  * can be wrong is an error that names it -- a missing convention document
  * that quietly sent nothing would judge against no convention at all.
  */
-function readContext(raw: unknown, id: string, options: NormalizeOptions): { docs: ContextDoc[] } | { error: string } {
+export function readContext(raw: unknown, id: string, options: NormalizeOptions): { docs: ContextDoc[] } | { error: string } {
   const docs: ContextDoc[] = [...(options.inheritedContext ?? [])];
   if (raw !== undefined && raw !== null) {
     if (!Array.isArray(raw) || raw.length === 0 || raw.some((p) => typeof p !== "string" || p.trim() === "")) {
-      return { error: `${id}: \`context\` must be a non-empty list of paths, relative to the rule file` };
+      return { error: `${id}: \`context\` must be a non-empty list of paths, relative to the ${options.relativeTo ?? "rule file"}` };
     }
     if (!options.ruleDir) {
       return { error: `${id}: \`context\` names documents relative to the rule file, and a rule built in memory has no rule file` };
@@ -896,6 +898,7 @@ export function loadRules(
   paths: string | string[],
   /** Languages the config declared: a rule may name one, and a directory may be called one. */
   custom: CustomLanguages = {},
+  sharedContext: ContextDoc[] = [],
 ): { rules: Rule[]; errors: string[]; warnings: string[] } {
   const files: Array<{ path: string; missing?: boolean }> = [];
   for (const p of Array.isArray(paths) ? paths : [paths]) {
@@ -978,7 +981,8 @@ export function loadRules(
   if (pending.length > 0) {
     resolveExtends(pending, rules, custom, errors, warnings, admit);
   }
-  return { rules, errors, warnings: [...driftWarnings(rules), ...warnings] };
+  const shared = addSharedContext(rules, sharedContext);
+  return { rules: shared.rules, errors: [...errors, ...shared.errors], warnings: [...driftWarnings(rules), ...warnings] };
 
   /** Layout and duplicate checks, then into the set. */
   function admit(rule: Rule, where: string, path: string, layout: { languageDir: string; id: string } | null): boolean {
@@ -1009,6 +1013,21 @@ export function loadRules(
     rules.push({ ...rule, source: path, pack: layout ? layout.languageDir : basename(path, extname(path)) });
     return true;
   }
+}
+
+/** Add shared evidence after inheritance so a child's base does not duplicate it. */
+export function addSharedContext(rules: Rule[], docs: ContextDoc[]): { rules: Rule[]; errors: string[] } {
+  if (docs.length === 0) return { rules, errors: [] };
+  const errors: string[] = [];
+  const combined = rules.map((rule) => {
+    const context = readContext(undefined, rule.id, { inheritedContext: [...docs, ...(rule.context ?? [])] });
+    if ("error" in context) {
+      errors.push(context.error);
+      return rule;
+    }
+    return { ...rule, context: context.docs };
+  });
+  return { rules: errors.length > 0 ? [] : combined, errors };
 }
 
 interface PendingExtends {

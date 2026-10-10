@@ -8,8 +8,10 @@ Historical measurements in other upstream documents describe their original rule
 
 ## Selection and configuration
 
-`-R, --rules <path>` is repeatable and explicitly replaces default rule sources for that run.
-Without it, `.jev-lint/rules/` beside the selected configuration or current directory is the only possible source.
+`-R, --rules <path>` is repeatable and takes precedence over config `rulePaths` and default rule sources for that run.
+Config `rulePaths: [./custom-rules]` explicitly selects rule files or directories, resolving each path relative to the configuration file, not the working directory or target file.
+When `rulePaths` is present, implicit discovery is disabled, including for an empty list.
+Without `-R` or `rulePaths`, `.jev-lint/rules/` beside the selected configuration or current directory is the only possible source.
 `--no-config` ignores configuration lookup, but use `-R` as well to prevent repository-rule lookup.
 `--config <path>` selects a configuration explicitly, otherwise the CLI searches upward for a recognized `.jev-lint.yaml` spelling.
 Two recognized config names in one directory are an error rather than an arbitrary choice.
@@ -18,6 +20,8 @@ Two recognized config names in one directory are an error rather than an arbitra
 ```yaml
 files: [src]
 exclude: [test/fixtures]
+rulePaths: [./custom-rules]
+context: []
 rules:
   typescript/my-rule: { severity: warning, threshold: 2 }
 transport: cloudflare
@@ -32,6 +36,36 @@ Unknown ids are configuration errors even when switched off.
 When a config omits `rules:`, default-discovered rules are not automatically enabled.
 An explicit `-R` can run all rules in its inputs unless configuration selection narrows them.
 No usable selected rules means exit 2, never a clean verdict.
+
+Config `context: [./conventions.md]` supplies shared evidence to selected rules for `check`, `review`, `commits`, `run`, `gaps` and `calibrate`, and to the `rules` listing.
+Paths resolve relative to the configuration file; per-rule context still resolves relative to its rule file and is added after the shared documents, including inherited documents.
+An omitted `context` or `context: []` adds no shared evidence.
+Missing, unreadable, empty or invalid shared documents are configuration errors with exit 2 and no inference or verdict; the combined shared and per-rule documents must fit the existing 40,000-character context budget.
+Context is structured evidence, not evaluator instructions; the state explicitly tells the evaluator to ignore embedded requests to alter questions, verdicts, output format or evaluator behavior.
+Content changes at the same context path invalidate local verdict reuse and change the full request's Gateway cache key.
+`eval` continues to calibrate each suite's own rule context rather than adding job-level shared context.
+There is no CLI `--context` flag.
+
+A direct whole-file Markdown job needs no generated inputs or preprocessing:
+
+```yaml
+rulePaths: [./custom-rules]
+context: [./conventions.md]
+rules: { doc-rule: on }
+transport: cloudflare
+model: typesafe/jev
+cache: none
+retry: 1
+```
+
+```bash
+jev-lint check --config /path/to/job.yml /path/to/actual.md
+```
+
+The referenced Text rule uses `subject: block` and `extensions: [md]`, omitting `split` to judge the whole file as one subject.
+Target positionals and CLI `-R` paths retain their working-directory-relative semantics.
+`cache: none` or `cache: null` disables local persistence, but `JEV_LINT_CACHE` overrides config; `--cache none` overrides that environment variable too.
+`retry` counts judgment passes and must be a positive integer, so use 1, not 0, for one pass.
 
 Flags override config values, which override built-in defaults.
 Transport selection additionally reads `JEV_LINT_TRANSPORT` below flags and config.
@@ -112,7 +146,9 @@ Known external language aliases do not install a parser; scanning without the re
 
 Exit codes are 0 for no findings, 1 for findings, 2 for unusable configuration, and 3 for unanswered inference work without a reportable verdict.
 Findings are candidates for human review, not authorization for consequential actions.
-A text block or file too large for model state can be truncated or stepped down, which the run reports.
+Text rules without `split` refuse a whole-file subject exceeding `MAX_BLOCK_CHARS` (48,000 characters of non-trailing-blank content) before cache lookup or inference, with no verdict and exit 3 for both checks and dry runs.
+The entire run is refused when any selected, unsuppressed whole-file subject exceeds that limit.
+Split blocks and other file state retain their existing reported truncation or arm step-down behavior.
 
 `hooks.precommit: {extends: true, rules: {...}}` overrides top-level rule selection for staged review and staged commits.
 With `extends: false`, only the hook selection runs.

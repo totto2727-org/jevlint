@@ -12,8 +12,23 @@ All upstream production rule packs are removed from `rules/`.
 The generic loader, AST/text/git subjects, inheritance between explicitly loaded custom rules, context documents, calibration, replay, reports and custom-language support remain available.
 Default rule sources contain only `.jev-lint/rules/` when present beside the selected config or current directory.
 Explicit `-R` replaces that source, and a bare `./rules/` is never discovered.
-Documentation callers must pass `-R` together with their explicit job config or `--no-config`; no documentation-specific repository-rule discovery is added.
+Config `rulePaths: [./custom-rules]` selects rule files or directories relative to the config file and disables implicit discovery when present, including `rulePaths: []`.
+CLI `-R` still takes precedence and resolves its paths against the working directory.
+Documentation callers can now use `jev-lint check --config /path/to/job.yml /path/to/actual.md` directly with `rulePaths` and explicit `rules` selection in the config, or pass `-R` with an explicit config or `--no-config`.
+No generated job files, documentation manifest engine, semantic state machinery or documentation-specific discovery is added.
 No new production custom rules are introduced.
+
+Config `context: [./conventions.md]` reads optional shared evidence relative to the config and prepends it to per-rule and inherited context without duplicating it through inheritance.
+`context: []` adds no documents, and no CLI `--context` flag is introduced.
+Rule selection, listing and judgment reuse the existing document reader, 40,000-character combined budget, structured state, grouping and content-sensitive cache scope.
+Missing, unreadable, empty or invalid shared evidence refuses configuration before inference and yields no verdict.
+The context state explicitly distinguishes convention evidence from evaluator instructions and tells the evaluator to ignore embedded requests to manipulate questions, verdicts or output.
+Suite `eval` retains its own rule context rather than job-level shared context.
+
+Optional no-split Text rules still judge one whole-file subject.
+The generic runner now refuses an unsplit subject exceeding the existing 48,000-character block cap before cache lookup or inference instead of judging a truncated prefix, with exit 3 and missing verdicts, also in dry-run mode.
+Below and at the cap, whole-file matching is unchanged; split Text blocks retain their existing truncation behavior.
+Real CLI tests from a hostile working directory cover explicit sources, additive evidence collection, `-R` precedence, disabled discovery, missing evidence, content-sensitive local cache reuse and whole-file size boundaries with a mocked transport and no live network.
 
 A subset of upstream rule suites is relocated to `test/fixtures/rules/` solely to preserve generic engine regression coverage, including AST framework matching, language selection, git subjects, calibration and replay.
 Those fixtures are never default sources and are excluded from the npm package.

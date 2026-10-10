@@ -23,9 +23,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import YAML from "yaml";
+import { readContext } from "./rules.ts";
 import { GROUP_MODES, LANGUAGES, SEVERITIES, STATE_ARMS } from "./types.ts";
 import { API_KEY_VARS, BASE_URL_VARS, fromEnv } from "./jev.ts";
-import type { CustomLanguage, CustomLanguages, GroupMode, Severity, StateArm } from "./types.ts";
+import type { ContextDoc, CustomLanguage, CustomLanguages, GroupMode, Severity, StateArm } from "./types.ts";
 
 /** The file names looked for, in order, walking up from the working directory. */
 /**
@@ -62,9 +63,13 @@ export interface Config {
   /** What `check` looks at with no positional. */
   files?: string[];
   exclude?: string[];
+  /** Explicit rule sources, resolved relative to the config file. Empty disables discovery. */
+  rulePaths?: string[];
+  /** Shared evidence, read relative to the config and added to each selected rule. */
+  context?: ContextDoc[];
   /**
    * The rules that run, by id (`fn-name-promises`, every language that has
-   * it) or `lang/id` (one), from the shipped set and `.jev-lint/rules/`.
+   * it) or `lang/id` (one), from the explicitly supplied or discovered sources.
    * Present, only these run; absent, a config that names nothing runs
    * nothing and says so.
    */
@@ -144,7 +149,7 @@ export function loadConfig(path: string | null): LoadedConfig {
   const src = raw as Record<string, unknown>;
 
   const KNOWN = new Set([
-    "files", "exclude", "rules", "hooks", "languages", "cache", "model", "transport", "baseUrl", "apiKeyEnv", "group", "arm",
+    "files", "exclude", "rulePaths", "context", "rules", "hooks", "languages", "cache", "model", "transport", "baseUrl", "apiKeyEnv", "group", "arm",
     "concurrency", "batchSize", "ruleBatchCap", "retry", "unsureBelow",
   ]);
   // The 0.4 spellings, refused by name: a key read as nothing would run
@@ -182,6 +187,23 @@ export function loadConfig(path: string | null): LoadedConfig {
   };
   stringList("files");
   stringList("exclude");
+
+  if (src.rulePaths !== undefined) {
+    if (!Array.isArray(src.rulePaths) || src.rulePaths.some((p) => typeof p !== "string" || p.trim() === "")) {
+      errors.push(`${where("rulePaths")} must be a list of non-empty paths, relative to the config file`);
+    } else {
+      config.rulePaths = (src.rulePaths as string[]).map((p) => resolve(dirname(resolve(path)), p));
+    }
+  }
+  if (src.context !== undefined) {
+    if (Array.isArray(src.context) && src.context.length === 0) config.context = [];
+    else if (src.context === null) errors.push(`${where("context")} must be a list of paths, relative to the config file`);
+    else {
+      const context = readContext(src.context, path, { ruleDir: dirname(resolve(path)), relativeTo: "config file" });
+      if ("error" in context) errors.push(context.error);
+      else config.context = context.docs;
+    }
+  }
 
   const parseRuleMap = (value: unknown, key: string): Record<string, RuleSetting> | null => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {

@@ -6,7 +6,7 @@
 import { DEFAULT_BATCH_SIZE } from "../batch.ts";
 import type { AskClient } from "../jev.ts";
 import type { RuleSetting } from "../config.ts";
-import type { CustomLanguages } from "../types.ts";
+import type { ContextDoc, CustomLanguages } from "../types.ts";
 import { DEFAULT_CACHE_PATH } from "../cache.ts";
 import { API_KEY_VARS, BASE_URL_VARS, DEFAULT_BASE_URL, DEFAULT_CONCURRENCY } from "../jev.ts";
 import { DEFAULT_RULE_BATCH_CAP } from "../schedule.ts";
@@ -16,8 +16,12 @@ import type { GroupMode, Severity, StateArm } from "../types.ts";
 
 /** Everything the command line can set. */
 export interface Options {
-  /** `-R` directories; empty means `.jev-lint/rules/` only. */
+  /** CLI `-R` sources, which override config sources and discovery. */
   rules: string[];
+  /** Config-relative sources; undefined enables implicit discovery, [] disables it. */
+  rulePaths?: string[];
+  /** Config-level evidence added to the selected rules. */
+  contextDocs?: ContextDoc[];
   /** True when `rules` was not given and the defaults are in use. */
   rulesAreShipped: boolean;
   /** The config's `rules:`; null when there is no config or it names none. */

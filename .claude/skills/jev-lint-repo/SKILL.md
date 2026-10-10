@@ -10,7 +10,7 @@ description: "Use when changing jev-lint ITSELF — editing src/, shipped rule s
 This fork removes upstream production rule suites. No rule YAML is bundled under `rules/` and `.jev-lint.yaml` enables no rules.
 The upstream authoring workflow below applies only to explicitly supplied custom suites, not to a shipped rule catalog.
 The minimal generic regression suites live under `test/fixtures/rules/`; `npm run ci` replays that directory explicitly.
-Documentation jobs must pass both `--config <job-config>` and `-R <job-rule-directory>` with `transport: cloudflare` and `model: typesafe/jev`, not rely on repository discovery.
+Documentation jobs must select explicit sources using config-relative `rulePaths` or CLI `-R <job-rule-directory>`, with `--config <job-config>`, `transport: cloudflare` and `model: typesafe/jev`, not rely on repository discovery.
 See [upstream differences](../../../docs/upstream-differences.md) for the pinned upstream revision and operational defaults.
 
 The user-facing skill (`skills/jev-lint/`, symlinked into `.claude/skills/`)

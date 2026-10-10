@@ -1003,6 +1003,18 @@ test("rules: an extending rule's `context` is added to its base's, each read bes
       { path: "a.md", text: "A\n" },
       { path: "b.md", text: "B\n" },
     ]);
+    const shared = [{ path: "shared.md", text: "Shared\n" }];
+    const combined = loadRules([t.root], {}, shared);
+    assert.deepEqual(combined.errors, []);
+    assert.deepEqual(combined.rules.find((r) => r.id === "child")!.context, [
+      ...shared,
+      { path: "a.md", text: "A\n" },
+      { path: "b.md", text: "B\n" },
+    ], "shared documents are added only once after resolving inheritance");
+    const tooLarge = loadRules([t.root], {}, [{ path: "shared.md", text: "x".repeat(40_000) }]);
+    assert.deepEqual(tooLarge.rules, [], "a combined context-budget failure cannot leave partially usable rules");
+    assert.ok(tooLarge.errors.every((e) => /context documents.*limit/.test(e)));
+    assert.equal(tooLarge.errors.length, 2);
   } finally {
     t.done();
   }

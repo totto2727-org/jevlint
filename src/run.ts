@@ -30,7 +30,7 @@ import { ruleTextHash, cutoffFor, extensionsOf, undeclared as undeclaredLanguage
 import { parseIgnores, isIgnored, unknownIgnoredRules, type FileIgnores } from "./ignore.ts";
 import { excerptBudget, pairTests, type RelatedTest } from "./paired.ts";
 import { commitSubjects, squashSubjects, stagedSubjects } from "./commits.ts";
-import { findTextFiles, textSubjects } from "./text.ts";
+import { findTextFiles, textSubjects, MAX_BLOCK_CHARS } from "./text.ts";
 import { FileIndex, isExcludedBy, tryReadFile } from "./files.ts";
 import type {
   CustomLanguages,
@@ -386,6 +386,21 @@ export async function run({
     : await collectSubjects({ rules, paths, arm, diffRanges, exclude, languages, cwd });
   const { subjects, symbols, sources, tests, stderr, skippedByDiff, excluded, undeclared, duplicateGrammars, ignored, unpaired } = collected;
   const commitStats = commits && "commits" in collected ? (collected as { commits: RunResult["commits"] }).commits : undefined;
+
+  // A whole-file rule cannot answer its question from a truncated prefix.
+  // Refuse before cache lookup too: a previous partial verdict is no evidence.
+  const oversized = subjects.filter((s) => s.rule.subject === "block" && !s.rule.split && s.textCut);
+  if (oversized.length > 0) {
+    return {
+      rules, group, subjects, batches: [], cachedCount: 0,
+      errors: oversized.map((s) => ({ file: s.file, subjects: 1, error: `${s.rule.id}: whole-file Text subject is ${s.textCut!.of} characters; the limit is ${MAX_BLOCK_CHARS}, so no verdict can be given without truncating evidence` })),
+      stderr, skippedByDiff, excluded, undeclared, duplicateGrammars, ignored, unpaired,
+      commits: commitStats, retry: passes, dryRun,
+      spent: { calls: 0, inputTokens: 0, usd: 0, ms: 0 },
+      ...gate(subjects.map((subject) => ({ subject, answer: null })), { cutoffs, unsureBelow, loose }),
+      elapsedMs: Date.now() - started,
+    };
+  }
 
   const jev: AskClient = client ?? new Jev({ transport: (process.env.JEV_LINT_TRANSPORT as "typesafe" | "cloudflare" | undefined) ?? "cloudflare", apiKey, model });
   // Conservative invalidation covers every collected state input, including

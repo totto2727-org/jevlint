@@ -9,12 +9,15 @@ Node.js 24 or later is required.
 
 `jev-lint init` writes a valid starter `.jev-lint.yaml` with `rules: {}`.
 Author your own rules in `.jev-lint/rules/` and enable their ids in that configuration.
-Without `-R`, only `.jev-lint/rules/` beside the selected config (or current directory when no config is selected) is a rule source.
+Without `-R` or config `rulePaths`, only `.jev-lint/rules/` beside the selected config (or current directory when no config is selected) is a rule source.
 A bare `./rules/` directory, upstream packs and test fixtures are never automatically loaded.
 `jev-lint rules --json` lists available custom rules, including an empty list when none exist.
 A check without usable rules exits 2 with setup guidance, not a clean verdict.
 
-For isolated documentation jobs, pass both an explicit config and an explicit rule directory, or use `--no-config -R` with explicit target paths.
+For isolated documentation jobs, set `rulePaths: [./custom-rules]` and explicit `rules` selection in a job config, then run `jev-lint check --config /path/to/job.yml /path/to/actual.md` directly.
+`rulePaths` and optional shared `context: [./conventions.md]` resolve relative to the config file, and `rulePaths` disables implicit discovery; CLI `-R` still takes precedence.
+See the [configuration reference](docs/reference.md#selection-and-configuration) for evidence limits and whole-file Text rules without `split`.
+Alternatively, pass an explicit config and `-R`, or use `--no-config -R` with explicit target paths.
 `--no-config` alone does not disable `.jev-lint/rules/` lookup, so always include `-R` for jobs that must not discover repository rules.
 
 ```bash

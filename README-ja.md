@@ -9,12 +9,15 @@ Node.js 24 以降が必要です。
 
 `jev-lint init` は `rules: {}` を含む有効な `.jev-lint.yaml` を作成します。
 `.jev-lint/rules/` に独自ルールを作成し、設定でその ID を有効にしてください。
-`-R` を指定しない場合、選択した設定ファイルの隣、または設定がない場合は現在のディレクトリにある `.jev-lint/rules/` だけがルールの読み込み元になります。
+`-R` と設定の `rulePaths` を指定しない場合、選択した設定ファイルの隣、または設定がない場合は現在のディレクトリにある `.jev-lint/rules/` だけがルールの読み込み元になります。
 単なる `./rules/`、upstream のルール集、テスト用 fixture は自動的に読み込みません。
 `jev-lint rules --json` は利用可能なルールを表示し、ルールがなければ空の一覧を返します。
 利用可能なルールがない check は、問題なしとは判定せず、案内と終了コード 2 を返します。
 
-分離した文書処理では、明示的な設定ファイルとルールディレクトリの両方を指定するか、`--no-config -R` と明示的な対象パスを使用してください。
+分離した文書処理では、設定ファイルに `rulePaths: [./custom-rules]` と明示的な `rules` 選択を記述し、`jev-lint check --config /path/to/job.yml /path/to/actual.md` を直接実行してください。
+`rulePaths` と任意の共有資料 `context: [./conventions.md]` は設定ファイルからの相対パスとして解決され、`rulePaths` は暗黙的なルール探索を無効にします。CLI の `-R` が指定されていればそちらが優先されます。
+資料のサイズ制限と `split` を省略したファイル全体の Text ルールは [設定リファレンス](docs/reference.md#selection-and-configuration) を参照してください。
+明示的な設定と `-R` を指定するか、`--no-config -R` と明示的な対象パスを使用する方法も利用できます。
 `--no-config` だけでは `.jev-lint/rules/` の検索を無効にしないため、リポジトリのルールを探索したくない処理では必ず `-R` を指定してください。
 
 ```bash
