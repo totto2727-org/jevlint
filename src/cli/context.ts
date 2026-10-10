@@ -50,6 +50,8 @@ export function resolveContext(opts: Options, rest: string[], log: Log): Context
   if (configErrors.length > 0) return null;
   for (const w of configWarnings) log(`config warning: ${w}`);
   applyConfig(opts, config, explicit);
+  opts.rulePaths = config.rulePaths;
+  opts.contextDocs = config.context;
   const envCache = process.env.JEV_LINT_CACHE;
   if (envCache && !explicit.has("--cache") && !explicit.has("-c")) opts.cache = envCache;
   if (configPath && !opts.quiet) log(`using ${configPath}`);

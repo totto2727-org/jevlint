@@ -9,7 +9,7 @@ export const CLEF_MAX_QUESTIONS = 64;
 /** Workers AI model pages, checked 2026-10-02; USD per million input tokens. */
 export const CLEF_USD_PER_MTOK: Record<ClefModel, number> = { clef: 0.24, "clef-flash": 0.09 };
 
-export interface ClefOptions extends Omit<JevOptions, "baseUrl" | "model"> {
+export interface ClefOptions extends Omit<JevOptions, "baseUrl" | "model" | "transport"> {
   accountId?: string | null;
   model?: ClefModel;
 }
@@ -20,7 +20,7 @@ export class Clef extends Jev {
 
   constructor({ accountId, apiKey, model = "clef", fetch: transport = globalThis.fetch, pacer, ...options }: ClefOptions = {}) {
     const account = accountId ?? fromEnv(["CLOUDFLARE_ACCOUNT_ID"]) ?? "";
-    super({ ...options, model,
+    super({ ...options, model, transport: "typesafe",
       apiKey: apiKey ?? fromEnv(["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_AUTH_TOKEN"]) ?? "",
       // A conservative starting budget for experiments, not Jev's measured
       // bucket. Callers can supply a pacer; 429s still adapt its rate.
@@ -43,6 +43,7 @@ export class Clef extends Jev {
         return Response.json(result, { headers: response.headers });
       },
     });
+    this.endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/run/@cf/cloudflare/${model}`;
     this.accountId = account;
     this.clefModel = model;
   }

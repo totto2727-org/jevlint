@@ -1,5 +1,8 @@
 # Cookbook
 
+These are authoring examples, not bundled production rules.
+Historical upstream measurements below do not describe this fork's defaults.
+
 Recipes for rules of your own, each one a complete YAML block that loads and
 matches. Copy the nearest one, change the sentence and the criteria, keep the
 shape. Every field is explained in [rule-fields.md](rule-fields.md); how to
@@ -75,7 +78,7 @@ day to find:
 - Subjects are one per line, so labels need `"window": 0`; the default window
   of 3 lets a `bad` label claim its neighbours.
 
-The shipped `script-name-does` in `rules/script-name-does/rule.yml` is the worked example.
+Author this example locally before selecting it; this fork does not install a `script-name-does` rule.
 
 ### Narrowing a capture by its text
 

@@ -205,6 +205,7 @@ export function fakeClient(judge: (instructions: Record<string, unknown>, questi
   const states: Array<Record<string, unknown>> = [];
   const spent = { calls: 0, inputTokens: 0, usd: 0, ms: 0 };
   return {
+    cacheIdentity: "test-only-fake-route",
     model: "fake",
     servedModel: "fake-1",
     spent,

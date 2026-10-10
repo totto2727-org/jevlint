@@ -23,7 +23,7 @@ import type { Options, Log } from "./args.ts";
  * fail a build. Exit 3 when any subject-answer is missing, including on replay.
  */
 export async function cmdEval(opts: Options, out: Log, log: Log, client: AskClient | null = null, baseDir: string = process.cwd()): Promise<number> {
-  const sources = opts.rules.length > 0 ? opts.rules : ruleSources(baseDir);
+  const sources = opts.rules.length > 0 ? opts.rules : (opts.rulePaths ?? ruleSources(baseDir));
   if (opts.compare) return cmdEvalCompare({ ...opts, rules: sources }, out, log);
   const roots = opts.paths.length > 0 ? opts.paths : sources;
   const suites = discoverEvals(roots);

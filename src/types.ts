@@ -803,6 +803,7 @@ export interface Spend {
   tokensPerSecond?: number;
   splits?: number;
   usd: number;
+  usdSource?: string;
 }
 
 export interface RunError {

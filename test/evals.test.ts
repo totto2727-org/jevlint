@@ -50,22 +50,22 @@ test("evals: a baseline moves with its suite, keyed on what follows fixtures/", 
   // could not tell: it compares decisions with the ones accepted, not
   // with the labels. Nine Go rules shipped that way before RULES.md's
   // generator scored them at precision 0.00.
-  const suite = { name: "typescript/a", dir: "rules/typescript/a", ruleFile: "rules/typescript/a/rule.yml", fixtures: "rules/typescript/a/fixtures", expect: "rules/typescript/a/expect.yml", baseline: "", last: "" };
+  const suite = { name: "typescript/a", dir: "test/fixtures/rules/typescript/a", ruleFile: "test/fixtures/rules/typescript/a/rule.yml", fixtures: "test/fixtures/rules/typescript/a/fixtures", expect: "test/fixtures/rules/typescript/a/expect.yml", baseline: "", last: "" };
   const record = {
     schema: "jev-lint-eval-1", recorded: "2026-09-20", model: null, suite: "typescript/a", rules: [], cutoffs: {},
     passes: [[{ rule: "a", file: "experiments/rule-candidates/typescript/a/fixtures/sub/x.ts", line: 1, value: 0.9, confidence: null }]],
     spent: { calls: 0, inputTokens: 0, usd: 0, ms: 0 },
   };
   const moved = relocateRecord(record as never, suite);
-  assert.equal(moved.passes[0]![0]!.file, "rules/typescript/a/fixtures/sub/x.ts");
+  assert.equal(moved.passes[0]![0]!.file, "test/fixtures/rules/typescript/a/fixtures/sub/x.ts");
   assert.equal(relocateRecord({ ...record, passes: [[{ ...record.passes[0]![0]!, file: "elsewhere/x.ts" }]] } as never, suite).passes[0]![0]!.file, "elsewhere/x.ts", "a path with no fixtures/ is left alone");
 });
 
 test("evals: expectations are written relative to the rule directory and resolved to the paths a run reports", () => {
-  const labels = relocateLabels({ default: "clean", note: "n", "fixtures/cart.ts": [{ line: 3, label: "bad" }] }, "rules/typescript/a", "a");
+  const labels = relocateLabels({ default: "clean", note: "n", "fixtures/cart.ts": [{ line: 3, label: "bad" }] }, "test/fixtures/rules/typescript/a", "a");
   assert.equal(labels.$default, "clean");
   assert.equal(labels.$note, "n");
-  assert.deepEqual(labels["rules/typescript/a/fixtures/cart.ts"], [{ line: 3, label: "bad", rule: "a" }]);
+  assert.deepEqual(labels["test/fixtures/rules/typescript/a/fixtures/cart.ts"], [{ line: 3, label: "bad", rule: "a" }]);
   assert.equal(labels["fixtures/cart.ts"], undefined);
   // The old spellings still read, so a hand-written file is not rejected
   // for a dollar sign.

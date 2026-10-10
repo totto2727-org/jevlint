@@ -19,6 +19,7 @@
  * the question set, which keeps the estimator in `batch.ts` free to be
  * approximate.
  */
+import { createHash } from "node:crypto";
 import { estimateTokens } from "./batch.ts";
 import type { Question, Spend, SystemOneResponse } from "./types.ts";
 
@@ -68,6 +69,10 @@ export class JevError extends Error {
 }
 
 export interface JevOptions {
+  transport?: "typesafe" | "cloudflare";
+  accountId?: string | null;
+  gatewayId?: string;
+  cacheTtl?: number;
   apiKey?: string | null;
   baseUrl?: string | null;
   model?: string | null;
@@ -227,6 +232,7 @@ export class Pacer {
  * a test hands in an object with these four members and no network.
  */
 export interface AskClient {
+  readonly cacheIdentity?: string;
   model: string;
   servedModel: string | null;
   readonly spent: Spend;
@@ -234,6 +240,13 @@ export interface AskClient {
 }
 
 export class Jev implements AskClient {
+  route: string;
+  gatewayId: string;
+  cacheTtl: number;
+  endpoint: string;
+  get cacheIdentity(): string {
+    return createHash("sha256").update(JSON.stringify([this.route, this.endpoint, this.gatewayId, this.apiKey, this.model])).digest("hex");
+  }
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -254,26 +267,36 @@ export class Jev implements AskClient {
   servedModel: string | null;
 
   constructor({
+    transport: route,
+    accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
+    gatewayId = process.env.CLOUDFLARE_AI_GATEWAY_ID ?? "",
+    cacheTtl = 2592000,
     apiKey,
     baseUrl,
     model,
-    retries = 4,
+    retries,
     timeoutMs = 60_000,
     onRequest = null,
     pacer = null,
-    rateLimitRetries = DEFAULT_RATE_LIMIT_RETRIES,
+    rateLimitRetries,
     rateLimitWaitMs = DEFAULT_RATE_LIMIT_WAIT_MS,
     fetch: transport = globalThis.fetch,
   }: JevOptions = {}) {
-    this.apiKey = apiKey ?? fromEnv(API_KEY_VARS) ?? "";
+    this.route = route ?? process.env.JEV_LINT_TRANSPORT ?? "typesafe";
+    this.gatewayId = gatewayId;
+    this.cacheTtl = cacheTtl;
+    this.apiKey = apiKey ?? (this.route === "cloudflare" ? fromEnv(["CLOUDFLARE_AI_GATEWAY_API_KEY"]) : fromEnv(API_KEY_VARS)) ?? "";
     this.baseUrl = (baseUrl ?? fromEnv(BASE_URL_VARS) ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-    this.model = model ?? process.env.JEV_LINT_MODEL ?? DEFAULT_MODEL;
-    this.retries = retries;
+    this.endpoint = this.route === "cloudflare"
+      ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId ?? "")}/ai/run`
+      : `${this.baseUrl}/v1/systemone`;
+    this.model = model ?? process.env.JEV_LINT_MODEL ?? (this.route === "cloudflare" ? "typesafe/jev" : DEFAULT_MODEL);
+    this.retries = retries ?? (this.route === "cloudflare" ? 0 : 4);
     this.timeoutMs = timeoutMs;
     /** Called with each request body before it is sent, for leak assertions. */
     this.onRequest = onRequest;
     this.pacer = pacer ?? new Pacer();
-    this.rateLimitRetries = rateLimitRetries;
+    this.rateLimitRetries = rateLimitRetries ?? (this.route === "cloudflare" ? 0 : DEFAULT_RATE_LIMIT_RETRIES);
     this.rateLimitWaitMs = rateLimitWaitMs;
     this.transport = transport;
 
@@ -324,6 +347,7 @@ export class Jev implements AskClient {
       tokensPerSecond: Math.round(this.pacer.rate),
       splits: this.splits,
       usd: this.usd,
+      ...(this.route === "cloudflare" ? { usdSource: "Typesafe reference estimate, not Cloudflare billing" } : {}),
     };
   }
 
@@ -333,13 +357,27 @@ export class Jev implements AskClient {
 
   /** One request: one state, N questions, N answers. */
   async ask(state: unknown, questions: Record<string, Question>): Promise<SystemOneResponse> {
+    if (!["typesafe", "cloudflare"].includes(this.route)) throw new JevError("unknown transport", { kind: "auth" });
+    if (this.route === "cloudflare" && (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(this.gatewayId) || !/^https:\/\/api\.cloudflare\.com\/client\/v4\/accounts\/[0-9a-f]{32}\/ai\/run$/i.test(this.endpoint) || !/^[\x21-\x7e]+$/.test(this.apiKey) || !Number.isInteger(this.cacheTtl) || this.cacheTtl < 60 || this.cacheTtl > 2592000)) {
+      throw new JevError("Cloudflare requires account ID, Gateway ID and cache TTL from 60 to 2592000 seconds", { kind: "auth" });
+    }
     if (!this.apiKey) {
-      throw new JevError(`no API key; set ${API_KEY_VARS[0]}`, { kind: "auth" });
+      throw new JevError(`no API key; set ${this.route === "cloudflare" ? "CLOUDFLARE_AI_GATEWAY_API_KEY" : API_KEY_VARS[0]}`, { kind: "auth" });
     }
     const names = Object.keys(questions);
     if (names.length === 0) return { answers: {}, usage: { input_tokens: 0 } };
 
-    const body = JSON.stringify({ model: this.model, state, questions });
+    const input = { state, questions };
+    const body = this.route === "cloudflare"
+      ? JSON.stringify({ model: this.model, input }, (_key, value) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, value[key]])) : value)
+      : JSON.stringify({ model: this.model, ...input });
+    const headers: Record<string, string> = { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" };
+    if (this.route === "cloudflare") {
+      headers["cf-aig-gateway-id"] = this.gatewayId;
+      headers["cf-aig-cache-key"] = `decision-v1-${createHash("sha256").update(this.cacheIdentity).update(body).digest("hex")}`;
+      headers["cf-aig-cache-ttl"] = String(this.cacheTtl);
+      headers["cf-aig-skip-cache"] = "false";
+    }
     if (this.onRequest) this.onRequest(body);
 
     let last = new JevError("no attempt made");
@@ -358,14 +396,12 @@ export class Jev implements AskClient {
       const timer = setTimeout(() => ac.abort(), this.timeoutMs);
       let res;
       try {
-        res = await this.transport(`${this.baseUrl}/v1/systemone`, {
+        res = await this.transport(this.endpoint, {
           method: "POST",
-          headers: {
-            authorization: `Bearer ${this.apiKey}`,
-            "content-type": "application/json",
-          },
+          headers,
           body,
           signal: ac.signal,
+          ...(this.route === "cloudflare" ? { redirect: "error" as const } : {}),
         });
       } catch (err: unknown) {
         clearTimeout(timer);
@@ -380,7 +416,33 @@ export class Jev implements AskClient {
 
       const text = await res.text();
       if (res.ok) {
-        const parsed = JSON.parse(text);
+        let parsed: any;
+        try {
+          parsed = JSON.parse(text);
+          if (this.route === "cloudflare") {
+            if (parsed?.success !== true || !parsed.result) throw new Error("failed inference envelope");
+            if (parsed.result.state !== "Completed" || !parsed.result.result) throw new Error("incomplete inference job");
+            parsed = parsed.result.result;
+            if (typeof parsed.model !== "string" || !parsed.answers || typeof parsed.answers !== "object" || Array.isArray(parsed.answers) || names.some((name) => !(name in parsed.answers)) || Object.keys(parsed.answers).length !== names.length) throw new Error("missing model or answer coverage");
+            for (const name of names) {
+              const question = questions[name]!;
+              const answer = parsed.answers[name];
+              if (!answer || answer.type !== question.type) throw new Error("wrong answer type");
+              if (question.type === "noul" && (!Number.isFinite(answer.noul) || answer.noul < 0 || answer.noul > 1)) throw new Error("invalid probability");
+              if (question.type === "score" && (!Number.isFinite(answer.score) || answer.score < 0 || answer.score > question.criteria.length - 1)) throw new Error("invalid score");
+              if (question.type === "choice" && !Object.hasOwn(question.criteria, answer.choice)) throw new Error("invalid choice");
+              if (answer.confidence !== undefined && (!Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1)) throw new Error("invalid confidence");
+              if (answer.probabilities !== undefined) {
+                const probabilities = answer.probabilities;
+                if (!probabilities || typeof probabilities !== "object" || Array.isArray(probabilities)) throw new Error("invalid distribution");
+                const values = Object.values(probabilities) as number[];
+                if (!values.length || values.some((v) => !Number.isFinite(v) || v < 0 || v > 1) || Math.abs(values.reduce((sum, v) => sum + v, 0) - 1) > 0.01) throw new Error("invalid distribution");
+              }
+            }
+          }
+        } catch {
+          throw new JevError("invalid or incomplete inference response: no verdict");
+        }
         this.pacer.settle(estimated, parsed.usage?.input_tokens ?? estimated);
         this.pacer.succeeded();
         this.calls += 1;

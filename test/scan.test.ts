@@ -179,7 +179,7 @@ await testAsync("scan: the test-call matcher knows jest, vitest, node:test, play
   // one shape a framework writes a test in; the title is what the model is
   // asked about, so it has to come out of every shape by the same name.
   const { collectSubjects } = await import("../src/run.ts");
-  const { rules } = loadRules(["rules"]);
+  const { rules } = loadRules(["test/fixtures/rules"]);
   const rule = rules.find((r) => r.languageDir === "typescript" && r.id === "test-name-verifies-claim")!;
   const dir = mkdtempSync(join(tmpdir(), "jev-frameworks-"));
   try {
@@ -230,7 +230,7 @@ await testAsync("scan: a test inside nested describes carries the whole path, an
   // `describe("cart") > describe("removeItem")` it claims that removeItem
   // leaves the other items. The title alone was what the bare arm sent.
   const { collectSubjects } = await import("../src/run.ts");
-  const { rules } = loadRules(["rules"]);
+  const { rules } = loadRules(["test/fixtures/rules"]);
   const rule = rules.find((r) => r.languageDir === "typescript" && r.id === "test-name-verifies-claim")!;
   const dir = mkdtempSync(join(tmpdir(), "jev-suites-"));
   try {

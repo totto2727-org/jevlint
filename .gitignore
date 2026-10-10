@@ -16,6 +16,7 @@ dist/
 *.tgz
 # The last eval run, accepted or not; the accepted one is baseline.json.
 rules/*/*/last.json
+test/fixtures/rules/*/*/last.json
 experiments/rule-candidates/*/*/last.json
 # Draft labels are autosaved by the dogfood TUI; explicit exports can be committed.
 experiments/dogfood/viewer-labels.local.json

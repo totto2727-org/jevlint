@@ -35,6 +35,12 @@ function changeFinding(violates: NonNullable<Finding["violates"]>): Finding {
   return finding;
 }
 
+test("report: Gateway reference cost is never presented as actual Cloudflare billing", () => {
+  const result = { findings: [], all: [], review: [], stats: { subjects: 0, reported: 0, missing: 0, unsure: 0, review: 0, byRule: {}, byFile: {} }, spent: { calls: 1, inputTokens: 10, outputTokens: 0, ms: 1, usd: 0.00000042, usdSource: "Typesafe reference estimate, not Cloudflare billing" } };
+  assert.match(formatPretty(result, { color: false }), /Typesafe reference estimate, not Cloudflare billing/);
+  assert.equal(JSON.parse(formatJson(result)).spent.usdSource, result.spent.usdSource);
+});
+
 test("report: a language with no files is one idle line, not a list of dead matchers", () => {
   const ts = { ...scoreRule({ id: "a" }), languageDir: "typescript" };
   const tsSilent = { ...scoreRule({ id: "b" }), languageDir: "typescript" };

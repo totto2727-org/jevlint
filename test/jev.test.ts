@@ -220,3 +220,83 @@ test("jev: the endpoint is configurable and a trailing slash does not double up"
   assert.equal(new Jev({ apiKey: "k", baseUrl: "https://proxy.example/v1/" }).baseUrl,
     "https://proxy.example/v1", "or the request path would contain //");
 });
+
+const gatewayQuestions: Record<string, Question> = {
+  q: { type: "noul", instructions: { statement: "Is the supplied evidence inconsistent?" }, criteria: { true: "yes", false: "no" } },
+};
+const gatewayResult = (answers: unknown = { q: { type: "noul", noul: 0.8 } }) => ({
+  success: true, result: { state: "Completed", result: { model: "typesafe/jev", answers, usage: { input_tokens: 10 } } },
+});
+const gatewayOptions = { transport: "cloudflare" as const, accountId: "a".repeat(32), gatewayId: "gateway", apiKey: "not-a-credential", model: "typesafe/jev" };
+
+await testAsync("jev: Gateway uses the universal envelope, fixed endpoint, opt-in cache and completed answers", async () => {
+  let requests = 0;
+  const client = new Jev({ ...gatewayOptions, baseUrl: "https://ignored.invalid", fetch: async (url, init) => {
+    requests += 1;
+    assert.equal(url, "https://api.cloudflare.com/client/v4/accounts/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/ai/run");
+    assert.deepEqual(JSON.parse(String(init!.body)), { model: "typesafe/jev", input: { state: { evidence: "full external state" }, questions: gatewayQuestions } });
+    const headers = new Headers(init!.headers);
+    assert.equal(headers.get("authorization"), `Bearer ${gatewayOptions.apiKey}`);
+    assert.equal(headers.get("cf-aig-gateway-id"), "gateway");
+    assert.equal(init!.redirect, "error");
+    assert.equal(headers.get("cf-aig-cache-ttl"), "2592000");
+    assert.equal(headers.get("cf-aig-skip-cache"), "false");
+    assert.match(headers.get("cf-aig-cache-key")!, /^decision-v1-[a-f0-9]{64}$/);
+    assert.ok(!headers.get("cf-aig-cache-key")!.includes(gatewayOptions.apiKey));
+    return Response.json(gatewayResult());
+  } });
+  const result = await client.ask({ evidence: "full external state" }, gatewayQuestions);
+  assert.equal(requests, 1);
+  assert.equal(result.model, "typesafe/jev");
+  assert.equal(client.servedModel, "typesafe/jev");
+  assert.equal(client.spent.inputTokens, 10);
+  assert.match(client.spent.usdSource!, /not Cloudflare billing/);
+  assert.equal(client.retries, 0);
+  assert.equal(client.rateLimitRetries, 0);
+});
+
+await testAsync("jev: Gateway cache equivalence covers model, account, Gateway, credential scope and complete canonical state", async () => {
+  const keys: string[] = [];
+  const ask = async (state: unknown, overrides = {}) => {
+    const client = new Jev({ ...gatewayOptions, ...overrides, fetch: async (_url, init) => {
+      keys.push(new Headers(init!.headers).get("cf-aig-cache-key")!);
+      return Response.json(gatewayResult());
+    } });
+    await client.ask(state, gatewayQuestions);
+  };
+  await ask({ b: "external", a: { content: "one" } });
+  await ask({ a: { content: "one" }, b: "external" });
+  assert.equal(keys[0], keys[1], "object insertion order does not change equivalence");
+  await ask({ a: { content: "two" }, b: "external" });
+  for (const overrides of [{ model: "typesafe/another" }, { accountId: "b".repeat(32) }, { gatewayId: "another" }, { apiKey: "different-non-credential" }]) await ask({ b: "external", a: { content: "one" } }, overrides);
+  assert.equal(new Set(keys.slice(1)).size, 6);
+});
+
+await testAsync("jev: Gateway rejects failed jobs, malformed envelopes, missing answers and invalid typed judgments", async () => {
+  const invalid = [null, {}, { success: false }, { success: true, result: { state: "Pending" } },
+    { success: true, result: { model: "typesafe/jev", answers: { q: { type: "noul", noul: 0.8 } } } },
+    gatewayResult({}), gatewayResult({ q: { type: "noul", noul: 0.8 }, extra: {} }),
+    gatewayResult({ q: { type: "noul", noul: 1.2 } }), gatewayResult({ q: { type: "score", score: 0.8 } }),
+    gatewayResult({ q: { type: "noul", noul: 0.8, confidence: -1 } }),
+    gatewayResult({ q: { type: "noul", noul: 0.8, probabilities: { yes: 0.9, no: 0.9 } } })];
+  for (const response of invalid) {
+    const client = new Jev({ ...gatewayOptions, fetch: async () => Response.json(response) });
+    await assert.rejects(() => client.ask({}, gatewayQuestions), JevError);
+    assert.equal(client.calls, 0, "invalid responses are not successful calls");
+  }
+  const malformed = new Jev({ ...gatewayOptions, fetch: async () => new Response("not JSON") });
+  await assert.rejects(() => malformed.ask({}, gatewayQuestions), JevError);
+  for (const status of [401, 403, 429, 500]) {
+    let requests = 0;
+    const client = new Jev({ ...gatewayOptions, fetch: async () => { requests += 1; return new Response("refused", { status }); } });
+    await assert.rejects(() => client.ask({}, gatewayQuestions), JevError);
+    assert.equal(requests, 1, "failure never changes route or multiplies Gateway retries");
+  }
+});
+
+await testAsync("jev: missing Gateway configuration fails before transport, even with a direct Typesafe credential", async () => {
+  for (const overrides of [{ accountId: "" }, { accountId: "not-32-hex" }, { gatewayId: "bad\nheader" }, { apiKey: "bad\nheader" }, { gatewayId: "" }, { apiKey: "" }, { cacheTtl: 59 }, { cacheTtl: 2592001 }]) {
+    const client = new Jev({ ...gatewayOptions, ...overrides, fetch: async () => { throw new Error("transport must not run"); } });
+    await assert.rejects(() => client.ask({}, gatewayQuestions), (error: unknown) => error instanceof JevError && error.kind === "auth");
+  }
+});

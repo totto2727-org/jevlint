@@ -265,7 +265,7 @@ export function formatPretty(
   if (spent?.calls) {
     out.push(
       c.dim(
-        `${spent.calls} request(s), ${spent.inputTokens.toLocaleString()} input tokens, $${spent.usd.toFixed(5)}, ` +
+        `${spent.calls} request(s), ${spent.inputTokens.toLocaleString()} input tokens, $${spent.usd.toFixed(5)}${spent.usdSource ? ` (${spent.usdSource})` : ""}, ` +
           (spent.wallMs != null ? `${spent.wallMs} ms (${spent.ms} ms of requests)` : `${spent.ms} ms`) +
           (spent.splits ? `, ${spent.splits} split(s)` : "") +
           (spent.retried ? `, ${spent.retried} retry/retries` : "") +

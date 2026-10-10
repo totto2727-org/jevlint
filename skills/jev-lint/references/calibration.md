@@ -1,5 +1,8 @@
 # Calibration
 
+This fork ships no production rule suites. Mentions of a shipped corpus below are upstream historical calibration evidence.
+Run this authoring workflow against explicitly supplied custom suites, or the minimal test-only regression suites when developing the engine.
+
 A cutoff is fitted, not chosen. A rule is not "working" because its findings
 look plausible; it is working when, on code you have labelled, its answers for
 defects and its answers for clean code are separated by a gap, and the cutoff

@@ -10,6 +10,11 @@ import type { Rule, RunResult } from "../types.ts";
 import type { Log, Options } from "./args.ts";
 
 export function printDryRun(result: RunResult, rules: Rule[], opts: Options, out: Log, log: Log): number {
+  if (result.errors?.length) {
+    for (const e of result.errors) log(`${e.file}: ${e.error}`);
+    if (opts.format === "json") out(JSON.stringify({ ...dryRunDocument(result, rules, opts), errors: result.errors }, null, 2));
+    return 3;
+  }
   if (opts.format === "json") {
     out(JSON.stringify(dryRunDocument(result, rules, opts), null, 2));
     if (result.ignored?.unknownRules.length) {

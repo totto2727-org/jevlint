@@ -11,20 +11,12 @@
  *
  *     sha256(schema, rule draft, arm, grouping, subject text)
  *
- * so editing a rule's sentence or its matcher invalidates that rule's verdicts
- * and nothing else, moving a function between files keeps its verdict on the
- * `bare` arm -- on the arms that show more, the context shown is in the key,
- * see `contextKey` -- and --
- * deliberately -- changing a THRESHOLD invalidates nothing at all.
- * Recalibration must be free, or it will not be done.
- *
- * What is NOT in the key is the rest of the file, even though the file is in
- * the state on the `located` and `full` arms -- nor the related tests the
- * `paired` arm carries, so a test added later does not retire a verdict that
- * said no test reached a path. That is a known and accepted imprecision:
- * keying on whole-file content would invalidate every verdict in a file on
- * every keystroke, which is not a cache. `jev-lint check --force` is the
- * escape hatch.
+ * The runner adds a conservative scope over model, route and all collected
+ * source, graph, related-test, subject and context-document content. Reusing
+ * a verdict over changed external evidence is not safe, even when the matched
+ * node did not change. This deliberately invalidates more than one node.
+ * Threshold-only changes do not change the judgment and remain free to re-score.
+ * Custom clients must provide cacheIdentity to enable persistent verdict reuse.
  *
  * Three properties the rest of the tool relies on:
  *
@@ -56,7 +48,7 @@ export const OLD_CACHE_PATH = ".jev-lint-cache.json";
  * and is rebuilt, instead of every entry silently missing and the file
  * carrying its dead weight forever.
  */
-export const CACHE_SCHEMA = "jev-lint-cache-4";
+export const CACHE_SCHEMA = "jev-lint-cache-5";
 
 /**
  * What a subject's question shows beyond its text, at this arm: the part of

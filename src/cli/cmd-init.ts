@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONFIG_NAMES, hookShim, initialConfig, initialHook, initialPushHook } from "../config.ts";
-import { API_KEY_VARS, fromEnv } from "../jev.ts";
+import { fromEnv } from "../jev.ts";
 import { loadRules, shippedRulesPath } from "../rules.ts";
 import type { Options, Log } from "./args.ts";
 
@@ -23,7 +23,7 @@ export function cmdInit(opts: Options, out: Log, log: Log): number {
     log(`${target} already exists; pass --force to overwrite it`);
     return 2;
   }
-  // The starter lists every shipped rule, on: the catalogue, to prune.
+  // The fork has no production catalogue, so initialization selects no rules.
   const shippedDir = shippedRulesPath();
   const keys = shippedDir ? loadRules([shippedDir]).rules.map((r) => r.languageDir ? `${r.languageDir}/${r.id}` : r.id).sort() : [];
   try {
@@ -34,25 +34,24 @@ export function cmdInit(opts: Options, out: Log, log: Log): number {
   }
 
   if (opts.format === "json") {
-    out(JSON.stringify({ wrote: target, keySet: fromEnv(API_KEY_VARS) !== null }, null, 2));
+    out(JSON.stringify({ wrote: target, keySet: fromEnv(["CLOUDFLARE_AI_GATEWAY_API_KEY"]) !== null }, null, 2));
     return 0;
   }
   out(`wrote ${target}`);
   out("");
-  const key = fromEnv(API_KEY_VARS);
+  const key = fromEnv(["CLOUDFLARE_AI_GATEWAY_API_KEY"]);
   if (key) {
-    out(`${API_KEY_VARS[0]} is set. Next:`);
+    out("CLOUDFLARE_AI_GATEWAY_API_KEY is set. Also configure CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_GATEWAY_ID.");
   } else {
-    out(`Set your API key, then run:`);
-    out(`  export ${API_KEY_VARS[0]}=...`);
+    out("Set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_AI_GATEWAY_ID and CLOUDFLARE_AI_GATEWAY_API_KEY in your environment.");
+    out("Direct Typesafe inference requires explicit transport: typesafe configuration.");
   }
   out(`  npx jev-lint check src --dry-run   # what it would ask, and the price`);
   out(`  npx jev-lint check src             # ask it`);
   out("");
-  out("Every shipped rule is enabled in the file; remove or turn off those you do not want.");
-  out("The shipped rules' cutoffs were fitted to this");
-  out("package's own corpus -- see `jev-lint gaps` and `jev-lint calibrate`");
-  out("before trusting them on your code.");
+  out("This fork ships no production rules. Author rules in .jev-lint/rules/ and enable their ids in rules:.");
+  out("Use -R <directory> for explicit rules and --no-config to avoid project configuration.");
+  out("Fit custom cutoffs with `jev-lint eval` and `jev-lint calibrate` before trusting them.");
   return 0;
 }
 
@@ -170,7 +169,7 @@ export function cmdInitHook(opts: Options, out: Log, log: Log, which: "pre-commi
   if (which === "pre-commit") {
     out("It reviews the staged diff and judges it against AGENTS.md (CLAUDE.md fallback)");
     out("on every commit, prints what it finds, and blocks only on a rule with");
-    out("`severity: error` -- no shipped rule has it. With no API key in the");
+    out("`severity: error` in explicitly supplied custom rules. With no API key in the");
     out("environment, or a request that fails outright, it steps aside. Skip it");
     out("once with `git commit --no-verify`; remove it by deleting the body.");
   } else {

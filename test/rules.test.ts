@@ -16,7 +16,7 @@ await testAsync("rules: MoonBit claim checks leave timing benchmarks out of corr
   const parser = join(process.cwd(), ".jev-lint", "parsers", "moonbit.dylib");
   if (!existsSync(parser)) return;
   const languages = { moonbit: { libraryPath: parser, extensions: ["mbt"], expandoChar: "_" } };
-  const suite = join(process.cwd(), "rules", "moonbit", "test-name-verifies-claim");
+  const suite = join(process.cwd(), "test/fixtures/rules", "moonbit", "test-name-verifies-claim");
   const { rules, errors } = loadRules(join(suite, "rule.yml"), languages);
   assert.deepEqual(errors, []);
   const result = await runAstGrep(rules, [join(suite, "fixtures", "cart_test.mbt")], { languages });
@@ -26,7 +26,7 @@ await testAsync("rules: MoonBit claim checks leave timing benchmarks out of corr
     "a benchmark measures time and does not assert its title as a correctness claim");
 });
 
-test("rules: the sources are the shipped packs and, when it exists, .jev-lint/rules/ -- never a bare ./rules", () => {
+test("rules: sources contain only .jev-lint/rules/ when it exists, never a bare ./rules", () => {
   // A fresh install used to exit 2 with "no usable rules found in rules":
   // the default was the literal `rules`, and the packs live in
   // `node_modules/jev-lint/rules`. Since 0.5 a project's own rules live in
@@ -36,15 +36,15 @@ test("rules: the sources are the shipped packs and, when it exists, .jev-lint/ru
   const dir = mkdtempSync(join(tmpdir(), "jev-lint-rules-"));
   try {
     const shipped = ruleSources(dir);
-    assert.equal(shipped.length, 1);
-    assert.ok(isAbsolute(shipped[0]!) && existsSync(shipped[0]!), `${shipped[0]} must be the package's own rules`);
-    assert.ok(loadRules(shipped).rules.length > 0, "and must actually load");
+    assert.deepEqual(shipped, []);
+    assert.equal(shippedRulesPath(), null);
+    assert.equal(loadRules(shipped).rules.length, 0, "test fixtures are never defaults");
     mkdirSync(join(dir, "rules"));
-    assert.equal(ruleSources(dir).length, 1, "./rules is not a source");
+    assert.equal(ruleSources(dir).length, 0, "./rules is not a source");
     mkdirSync(join(dir, ".jev-lint", "rules"), { recursive: true });
     const both = ruleSources(dir);
-    assert.equal(both.length, 2);
-    assert.equal(both[1], join(dir, USER_RULES_DIR));
+    assert.equal(both.length, 1);
+    assert.equal(both[0], join(dir, USER_RULES_DIR));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -274,7 +274,7 @@ test("rules: `run` selects one shipped rule by id, in every language or one, or 
   // project's own rules/ holds, in every language that has it; with a
   // language prefix, in that one. `--file` names a file instead, and the
   // id then picks one rule out of it.
-  const shipped = shippedRulesPath()!;
+  const shipped = join(process.cwd(), "test/fixtures/rules");
   assert.ok(existsSync(shipped));
   const every = selectRules({ id: "fn-name-promises", shipped, projectRules: [] });
   assert.deepEqual(every.errors, []);
@@ -284,7 +284,7 @@ test("rules: `run` selects one shipped rule by id, in every language or one, or 
   // Unknown: an error that names the nearest ids, never an empty run.
   const missing = selectRules({ id: "fn-name", shipped, projectRules: [] });
   assert.equal(missing.rules.length, 0);
-  assert.match(missing.errors[0]!, /no shipped rule.*fn-name/);
+  assert.match(missing.errors[0]!, /no explicitly loaded rule.*fn-name/);
   assert.match(missing.errors[0]!, /fn-name-promises/, "the nearest ids are offered");
   // A project's own rule is found when the shipped set has no such id.
   const dir = mkdtempSync(join(tmpdir(), "jev-run-"));
@@ -634,11 +634,11 @@ test("rules: every tier-one shipped rule has fixtures, an expect file and an acc
   // The bar a first-tier language is held to. A rule under any other
   // language directory may ship without a baseline and is listed as
   // uncalibrated; a rule under typescript/ or rust/ may not.
-  const { rules, errors } = loadRules(["rules"]);
+  const { rules, errors } = loadRules(["test/fixtures/rules"]);
   assert.deepEqual(errors, []);
   for (const r of rules) {
     if (!r.languageDir || !(TIER_ONE as readonly string[]).includes(r.languageDir)) continue;
-    const dir = join("rules", r.languageDir, r.id);
+    const dir = join("test/fixtures/rules", r.languageDir, r.id);
     assert.equal(r.source, join(dir, "rule.yml"), `${r.languageDir}/${r.id} lives where its identity says`);
     for (const need of ["fixtures", "expect.yml", "baseline.json"]) {
       assert.ok(existsSync(join(dir, need)), `${dir}/${need} is missing`);
@@ -656,8 +656,9 @@ await testAsync("RULES.md is what tools/rules-md.ts generates from rules/", asyn
   assert.equal(readFileSync("RULES.md", "utf8"), generated, "RULES.md is stale: run `npm run rules:md`");
 });
 
-test("rules: the shipped pack loads with no errors", () => {
-  const { rules, errors } = loadRules(["rules"]);
+test("rules: the isolated regression fixtures load without errors, production rules are empty", () => {
+  assert.deepEqual(loadRules(["rules"]).rules, []);
+  const { rules, errors } = loadRules(["test/fixtures/rules"]);
   assert.deepEqual(errors, [], `shipped rules must be valid: ${errors.join("; ")}`);
   assert.ok(rules.length >= 8);
   // Every shipped rule must declare a cutoff, since the defaults are
@@ -829,7 +830,7 @@ function rulesRoot(prefix: string): { root: string; write: (rel: string, text: s
   };
 }
 
-test("rules: `extends` takes a shipped rule whole and replaces only the fields the file gives", () => {
+test("rules: `extends` takes an explicitly loaded base whole and replaces only the fields the file gives", () => {
   // A project that wants the shipped test rule with its own conventions
   // used to copy the rule file and give it a new id -- and from then on the
   // copy never got the upstream fixes to its matcher, criteria or cutoff.
@@ -839,10 +840,10 @@ test("rules: `extends` takes a shipped rule whole and replaces only the fields t
       "typescript/acme-test-name/rule.yml",
       "id: acme-test-name\nextends: typescript/test-name-verifies-claim\nstate: local\n",
     );
-    const { rules, errors } = loadRules([t.root]);
+    const { rules, errors } = loadRules([t.root, join(process.cwd(), "test/fixtures/rules/typescript/test-name-verifies-claim")]);
     assert.deepEqual(errors, []);
     const child = rules.find((r) => r.id === "acme-test-name")!;
-    const base = loadRules([shippedRulesPath()!]).rules.find((r) => r.id === "test-name-verifies-claim" && r.languageDir === "typescript")!;
+    const base = loadRules([join(process.cwd(), "test/fixtures/rules")]).rules.find((r) => r.id === "test-name-verifies-claim" && r.languageDir === "typescript")!;
     assert.equal(child.extends, "typescript/test-name-verifies-claim");
     assert.equal(child.ask, base.ask);
     assert.deepEqual(child.criteria, base.criteria);
@@ -852,7 +853,7 @@ test("rules: `extends` takes a shipped rule whole and replaces only the fields t
     assert.equal(child.state, "local", "the field the file gives wins");
     assert.equal(child.languageDir, "typescript");
     assert.notEqual(ruleTextHash(child), ruleTextHash(base), "a different state is a different question");
-    assert.equal(rules.filter((r) => r.id === "test-name-verifies-claim").length, 0, "the base is looked up, not loaded as a rule of this source");
+    assert.equal(rules.filter((r) => r.id === "test-name-verifies-claim").length, 1, "the explicitly supplied base is loaded");
   } finally {
     t.done();
   }
@@ -911,15 +912,17 @@ test("rules: an `extends` that names nothing, names several, loops or reuses the
   const t = rulesRoot("jev-extends-bad-");
   try {
     t.write("missing.yml", "id: missing\nextends: no-such-rule\n");
-    // Four languages ship this id; the file names none of them.
+    // Explicitly loaded bases share an id across two languages.
+    t.write("typescript/test-name-verifies-claim/rule.yml", "id: test-name-verifies-claim\nlanguage: TypeScript\nrule: { kind: x }\nask: q\n");
+    t.write("rust/test-name-verifies-claim/rule.yml", "id: test-name-verifies-claim\nlanguage: Rust\nrule: { kind: x }\nask: q\n");
     t.write("ambiguous.yml", "id: ambiguous\nextends: test-name-verifies-claim\n");
     t.write("loop-a.yml", "id: loop-a\nextends: loop-b\n");
     t.write("loop-b.yml", "id: loop-b\nextends: loop-a\n");
     t.write("same.yml", "id: fn-name-promises\nextends: typescript/fn-name-promises\n");
     const { rules, errors } = loadRules([t.root]);
-    assert.deepEqual(rules.map((r) => r.id), []);
+    assert.deepEqual(rules.map((r) => r.id), ["test-name-verifies-claim", "test-name-verifies-claim"]);
     const about = (id: string) => errors.find((e) => e.startsWith(`${id}:`) || e.includes(`/${id}.yml`)) ?? "";
-    assert.match(about("missing"), /no-such-rule.*no loaded or shipped rule/);
+    assert.match(about("missing"), /no-such-rule.*no explicitly loaded rule/);
     assert.match(about("ambiguous"), /test-name-verifies-claim.*(go|rust|moonbit|typescript).*<lang>\/<id>|languages/);
     assert.match(about("loop-a"), /cycle/);
     assert.match(about("fn-name-promises"), /its own id/);
@@ -931,11 +934,13 @@ test("rules: an `extends` that names nothing, names several, loops or reuses the
 test("rules: a bare `extends` id resolves to the one base whose grammars cover the file's languages", () => {
   const t = rulesRoot("jev-extends-lang-");
   try {
+    t.write("typescript/test-name-verifies-claim/rule.yml", "id: test-name-verifies-claim\nlanguages: [TypeScript, Tsx]\nrule: { kind: x }\nask: q\n");
     t.write("mine.yml", "id: mine\nextends: test-name-verifies-claim\nlanguages: [TypeScript, Tsx]\n");
     const { rules, errors } = loadRules([t.root]);
     assert.deepEqual(errors, []);
-    assert.equal(rules[0]!.extends, "typescript/test-name-verifies-claim");
-    assert.deepEqual(rules[0]!.languages, ["TypeScript", "Tsx"]);
+    const mine = rules.find((r) => r.id === "mine")!;
+    assert.equal(mine.extends, "typescript/test-name-verifies-claim");
+    assert.deepEqual(mine.languages, ["TypeScript", "Tsx"]);
   } finally {
     t.done();
   }
@@ -998,6 +1003,18 @@ test("rules: an extending rule's `context` is added to its base's, each read bes
       { path: "a.md", text: "A\n" },
       { path: "b.md", text: "B\n" },
     ]);
+    const shared = [{ path: "shared.md", text: "Shared\n" }];
+    const combined = loadRules([t.root], {}, shared);
+    assert.deepEqual(combined.errors, []);
+    assert.deepEqual(combined.rules.find((r) => r.id === "child")!.context, [
+      ...shared,
+      { path: "a.md", text: "A\n" },
+      { path: "b.md", text: "B\n" },
+    ], "shared documents are added only once after resolving inheritance");
+    const tooLarge = loadRules([t.root], {}, [{ path: "shared.md", text: "x".repeat(40_000) }]);
+    assert.deepEqual(tooLarge.rules, [], "a combined context-budget failure cannot leave partially usable rules");
+    assert.ok(tooLarge.errors.every((e) => /context documents.*limit/.test(e)));
+    assert.equal(tooLarge.errors.length, 2);
   } finally {
     t.done();
   }
