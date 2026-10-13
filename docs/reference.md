@@ -91,6 +91,10 @@ has no type declarations to match, plus whatever TypeScript rule found no
 node. **`N without a verdict`** means
 requests failed, and a run with failures never reads as a clean repository.
 
+`replay` exits `3` when recorded subjects lack answers, unless a finding meets the active `--fail-on` severity floor, which takes precedence with exit `1`.
+Fully answered clean records exit `0`, as do fully answered records whose findings are below that floor.
+This applies to text, JSON and GitHub output without changing the replayed findings or making any inference request.
+
 ### Pricing a run: `--dry-run`
 
 `--dry-run` plans a run and prices it without a request: the batches, the

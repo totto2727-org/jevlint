@@ -354,6 +354,54 @@ await testAsync("cli: init writes the starter config once, and replay refuses wh
   }
 });
 
+test("cli: replay missing verdicts fail without overriding finding severity precedence", () => {
+  const root = realpathSync(".");
+  mkdirSync(join(root, "tmp"), { recursive: true });
+  const dir = realpathSync(mkdtempSync(join(root, "tmp", "jev-replay-verdict-")));
+  try {
+    const record = join(dir, "run.json");
+    const rule = noulRule({ id: "name-lies", at: 0.5, severity: "warning" });
+    const cases = [
+      { name: "all missing", values: [null, null], failOn: null, code: 3, missing: 2, findings: 0 },
+      { name: "partially missing", values: [0.1, null], failOn: null, code: 3, missing: 1, findings: 0 },
+      { name: "missing with severity filter", values: [0.1, null], failOn: "error", code: 3, missing: 1, findings: 0 },
+      { name: "fully answered clean", values: [0.1, 0.1], failOn: null, code: 0, missing: 0, findings: 0 },
+      { name: "blocking finding before missing", values: [0.9, null], failOn: null, code: 1, missing: 1, findings: 1 },
+      { name: "warning meets severity floor", values: [0.9, null], failOn: "warning", code: 1, missing: 1, findings: 1 },
+      { name: "filtered finding cannot hide missing", values: [0.9, null], failOn: "error", code: 3, missing: 1, findings: 1 },
+      { name: "fully answered filtered finding", values: [0.9, 0.1], failOn: "error", code: 0, missing: 0, findings: 1 },
+    ];
+    for (const c of cases) {
+      writeFileSync(record, JSON.stringify({
+        schema: "jev-lint-run-1", recorded: "2026-10-13", model: "test",
+        cutoffs: {}, unsureBelow: null, spent: { calls: 0 }, rules: [rule],
+        answers: c.values.map((value, i) => ({
+          rule: rule.id, file: "a.ts", line: i + 1, endLine: i + 1,
+          kind: value === null ? null : "noul", value, confidence: null, arm: "local",
+        })),
+      }));
+      for (const format of ["json", "pretty", "github"]) {
+        const result = spawnSync(process.execPath, [
+          "--experimental-strip-types", join(root, "src/cli.ts"), "replay", record,
+          "--no-config", "--no-color", "--format", format, "--show-missing",
+          ...(c.failOn ? ["--fail-on", c.failOn] : []),
+        ], { encoding: "utf8" });
+        assert.equal(result.status, c.code, `${c.name} (${format}): ${result.stderr}`);
+        if (format === "json") {
+          const report = JSON.parse(result.stdout);
+          assert.equal(report.stats.subjects, 2, c.name);
+          assert.equal(report.stats.missing, c.missing, c.name);
+          assert.equal(report.findings.length, c.findings, c.name);
+          assert.deepEqual(report.errors, [], "coverage must fail even without recorded request errors");
+          assert.equal(report.spent.calls, 0, "replay needs no inference request");
+        }
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 await testAsync("cli: replay keeps same-id rules in their recorded language", async () => {
   const { cmdReplay } = await import("../src/cli/cmd-replay.ts");
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "jev-replay-language-")));
