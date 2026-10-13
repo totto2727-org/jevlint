@@ -71,6 +71,9 @@ export function cmdReplay(opts: Options, out: Log, log: Log): number {
 
   const cutoffs = { ...(record.cutoffs ?? {}), ...opts.at };
   const gated = gate(results, { cutoffs, unsureBelow: opts.unsureBelow ?? record.unsureBelow, loose: opts.loose });
+  // Run records retain unanswered subjects, not the request errors that caused
+  // them. Use coverage to refuse success, while keeping blocking findings first.
+  const exitCode = blocks(gated.findings, opts.failOn) ? 1 : gated.stats.missing > 0 ? 3 : 0;
   const result = {
     ...gated,
     rules,
@@ -99,7 +102,7 @@ export function cmdReplay(opts: Options, out: Log, log: Log): number {
     out(JSON.stringify({ ...JSON.parse(formatJson(result)), gaps }, null, 2));
     emitFits(opts.labels, analysed, rules, log, log);
     for (const line of trailer) log(line);
-    return blocks(gated.findings, opts.failOn) ? 1 : 0;
+    return exitCode;
   }
   if (opts.format === "github") out(formatGithub(result));
   else out(formatPretty(result, { color: opts.color, showMissing: opts.showMissing, summary: opts.summary }));
@@ -108,5 +111,5 @@ export function cmdReplay(opts: Options, out: Log, log: Log): number {
   out("");
   emitFits(opts.labels, analysed, rules, out, log);
   for (const line of trailer) out(line);
-  return blocks(gated.findings, opts.failOn) ? 1 : 0;
+  return exitCode;
 }
